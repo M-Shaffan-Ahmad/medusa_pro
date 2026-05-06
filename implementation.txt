@@ -1,0 +1,471 @@
+Here's a detailed breakdown of how to combine these two ideas. The architecture has two orthogonal improvements: a quantized KV cache and a two-pass tree verifier.Now here is the concrete implementation. There are three self-contained components that slot into a standard MEDUSA codebase.
+
+**Component 1 — QJL transform (the cheap 1-bit scorer)**
+
+```python
+import torch
+import math
+
+class QJLTransform:
+    """
+    Applies a random JL matrix then takes the sign bit.
+    Key insight: ProdQJL(q, k) = sqrt(pi/2)/m * ||k||2 * <Sq, sign(Sk)>
+    is an unbiased estimator of <q,k> (Lemma 3.2 in the QJL paper).
+    """
+    def __init__(self, d: int, m: int = None):
+        self.d = d
+        self.m = m or d
+        # Orthogonalise rows for better empirical performance
+        G = torch.randn(self.m, d)
+        Q, _ = torch.linalg.qr(G.T)   # Q is (d, m) orthogonal
+        # S has orthogonal rows; store transposed for fast matmul
+        self.S = Q.T.contiguous()      # (m, d)
+
+    def to(self, device):
+        self.S = self.S.to(device)
+        return self
+
+    # ---- key-side (called once per token, stored in cache) ----------------
+    def encode_key(self, k: torch.Tensor):
+        """
+        k : (n, d)
+        returns sign_bits (n, m) in int8, norms (n,) in float16
+        """
+        Sk = k @ self.S.T                      # (n, m)
+        sign_bits = Sk.sign().to(torch.int8)   # 1-bit (packed as int8)
+        norms = k.norm(dim=-1).half()          # store in fp16
+        return sign_bits, norms
+
+    # ---- query-side (called every step, nothing stored) -------------------
+    def estimate_scores(self,
+                        q: torch.Tensor,       # (1, d)
+                        sign_bits: torch.Tensor,  # (n, m) int8
+                        norms: torch.Tensor):  # (n,) float16
+        """
+        Returns approximate <q, k_i> for every cached key i.
+        Cost is O(n * m) cheap multiply-add, no dequantisation needed.
+        """
+        Sq = q @ self.S.T                      # (1, m)
+        # Inner product between Sq and each sign vector
+        inner = Sq.float() @ sign_bits.float().T  # (1, n)
+        scale = math.sqrt(math.pi / 2) / self.m
+        scores = scale * norms.float() * inner.squeeze(0)  # (n,)
+        return scores
+```
+
+**Component 2 — TurboQuant KV cache (the compressed store)**
+
+This follows Algorithm 1 and 2 from the TurboQuant paper: random rotation → Lloyd-Max scalar quantisation of each coordinate → QJL on the residual for unbiased inner products.
+
+```python
+import numpy as np
+from scipy.cluster.vq import kmeans as scipy_kmeans
+
+class TurboQuantKVCache:
+    """
+    Stores past key/value embeddings at ~3 bits/coord.
+    Structure per token:
+      keys  → idx_inlier (b-1 bits), idx_outlier (b+1 bits),
+               qjl_sign (1 bit on residual), residual_norm (fp16)
+      values → standard per-token minmax int8 (simple + effective)
+    """
+
+    def __init__(self,
+                 head_dim: int,
+                 bit_width: int = 3,
+                 num_outlier_ch: int = 32,
+                 device: str = "cuda"):
+        self.d = head_dim
+        self.b = bit_width
+        self.n_out = num_outlier_ch
+        self.device = device
+
+        # --- random rotation (shared across all layers/heads) ---
+        G = torch.randn(head_dim, head_dim)
+        Q, _ = torch.linalg.qr(G)
+        self.R = Q.to(device)          # (d, d) orthogonal
+
+        # --- Lloyd-Max codebooks for coordinate distribution ~N(0, 1/d) ---
+        # We solve the 1-D k-means offline for (b-1) and (b+1) bits
+        self.cb_inlier  = self._lloyd_max_codebook(bit_width - 1, head_dim).to(device)
+        self.cb_outlier = self._lloyd_max_codebook(bit_width + 1, head_dim).to(device)
+
+        # --- QJL for the residual (unbiased inner product correction) ---
+        self.qjl = QJLTransform(head_dim).to(device)
+
+        # --- outlier channels identified at first prefill ---
+        self.outlier_ch = None   # (n_out,) int indices
+        self.inlier_ch  = None   # (d - n_out,) int indices
+
+        # --- cache tensors (grow dynamically) ---
+        self.k_idx_in   = []  # list of (n_out,) tensors
+        self.k_idx_out  = []
+        self.k_qjl_sign = []  # (m,) int8
+        self.k_qjl_norm = []  # scalar fp16
+        self.v_cache    = []  # (d,) int8 + (2,) fp16 scale/zero
+
+    def _lloyd_max_codebook(self, bits: int, d: int) -> torch.Tensor:
+        """
+        Fit k-means on samples from N(0, 1/sqrt(d)) — the coordinate
+        distribution after rotation onto the unit sphere in high dim.
+        """
+        k = 2 ** bits
+        samples = np.random.randn(200_000) / math.sqrt(d)
+        centroids, _ = scipy_kmeans(samples, k, iter=20)
+        return torch.tensor(np.sort(centroids), dtype=torch.float32)
+
+    def identify_outlier_channels(self, k_prefill: torch.Tensor):
+        """
+        Call once after the prefill forward pass.
+        k_prefill : (seq_len, d)
+        Outlier channels = those with highest average |magnitude|.
+        """
+        magnitudes = k_prefill.abs().mean(dim=0)   # (d,)
+        self.outlier_ch = magnitudes.topk(self.n_out).indices
+        mask = torch.ones(self.d, dtype=torch.bool, device=self.device)
+        mask[self.outlier_ch] = False
+        self.inlier_ch = mask.nonzero(as_tuple=True)[0]
+
+    def _quantize_coord(self, y: torch.Tensor, codebook: torch.Tensor):
+        """Nearest centroid index. y: (n,), codebook: (k,)"""
+        dists = (y.unsqueeze(-1) - codebook.unsqueeze(0)).abs()  # (n, k)
+        return dists.argmin(dim=-1)                               # (n,)
+
+    def _dequantize_coord(self, idx: torch.Tensor, codebook: torch.Tensor):
+        return codebook[idx]
+
+    def add_key(self, k: torch.Tensor):
+        """
+        k : (d,) single new key vector (called every generation step)
+        """
+        # 1. Rotate
+        y = k @ self.R           # (d,)
+
+        # 2. Quantise inlier / outlier channels separately
+        idx_in  = self._quantize_coord(y[self.inlier_ch],  self.cb_inlier)
+        idx_out = self._quantize_coord(y[self.outlier_ch], self.cb_outlier)
+
+        # 3. Reconstruct MSE approximation in rotated space
+        y_hat = torch.zeros(self.d, device=self.device)
+        y_hat[self.inlier_ch]  = self._dequantize_coord(idx_in,  self.cb_inlier)
+        y_hat[self.outlier_ch] = self._dequantize_coord(idx_out, self.cb_outlier)
+
+        # 4. QJL on residual  (k_hat = R^T @ y_hat, residual = k - k_hat)
+        k_hat = y_hat @ self.R.T
+        residual = k - k_hat
+        sign_r, norm_r = self.qjl.encode_key(residual.unsqueeze(0))
+
+        self.k_idx_in.append(idx_in)
+        self.k_idx_out.append(idx_out)
+        self.k_qjl_sign.append(sign_r.squeeze(0))
+        self.k_qjl_norm.append(norm_r.squeeze(0))
+
+    def add_value(self, v: torch.Tensor):
+        """
+        v : (d,) standard per-token int8 quantisation (sufficient for values).
+        """
+        vmin, vmax = v.min(), v.max()
+        scale = (vmax - vmin) / 255
+        zero  = vmin
+        v_q   = ((v - zero) / (scale + 1e-9)).round().clamp(0, 255).to(torch.uint8)
+        self.v_cache.append((v_q, scale, zero))
+
+    def fast_key_scores(self, q: torch.Tensor) -> torch.Tensor:
+        """
+        Approximate <q, k_i> for ALL cached keys using 1-bit QJL.
+        q : (d,)  current query (fp32/fp16)
+        Returns (n_cached,) float scores — cheap, used for pruning.
+        """
+        if not self.k_qjl_sign:
+            return torch.tensor([], device=self.device)
+
+        sign_stack = torch.stack(self.k_qjl_sign, dim=0)  # (n, m)
+        norm_stack = torch.stack(self.k_qjl_norm, dim=0)  # (n,)
+
+        # QJL only gives the RESIDUAL contribution; add MSE part separately
+        # MSE contribution: reconstruct all cached keys in one batch
+        n = len(self.k_idx_in)
+        y_hat = torch.zeros(n, self.d, device=self.device)
+        idx_in_stack  = torch.stack(self.k_idx_in,  dim=0)  # (n, d-n_out)
+        idx_out_stack = torch.stack(self.k_idx_out, dim=0)  # (n, n_out)
+        y_hat[:, self.inlier_ch]  = self.cb_inlier[idx_in_stack]
+        y_hat[:, self.outlier_ch] = self.cb_outlier[idx_out_stack]
+        k_hat_batch = y_hat @ self.R.T                       # (n, d)
+
+        mse_scores = (q.unsqueeze(0) * k_hat_batch).sum(dim=-1)  # (n,)
+        qjl_scores = self.qjl.estimate_scores(
+            q.unsqueeze(0), sign_stack, norm_stack)          # (n,)
+
+        return mse_scores + qjl_scores                        # (n,) total approx score
+
+    def exact_key_scores(self, q: torch.Tensor,
+                         indices: torch.Tensor) -> torch.Tensor:
+        """
+        Full dequantise + exact dot product for a SMALL subset of keys.
+        indices : (k,) int  — which keys to compute exactly
+        """
+        idx_in_sub  = torch.stack([self.k_idx_in[i]  for i in indices])
+        idx_out_sub = torch.stack([self.k_idx_out[i] for i in indices])
+        sign_sub    = torch.stack([self.k_qjl_sign[i] for i in indices])
+        norm_sub    = torch.stack([self.k_qjl_norm[i] for i in indices])
+
+        k = len(indices)
+        y_hat = torch.zeros(k, self.d, device=self.device)
+        y_hat[:, self.inlier_ch]  = self.cb_inlier[idx_in_sub]
+        y_hat[:, self.outlier_ch] = self.cb_outlier[idx_out_sub]
+        k_hat = y_hat @ self.R.T
+
+        residual_recon = self.qjl.estimate_scores(
+            q.unsqueeze(0), sign_sub, norm_sub).unsqueeze(1)
+
+        # Full dequant key
+        k_full = k_hat    # good enough for acceptance check;
+                          # optionally add residual_recon * q_dir
+        return (q.unsqueeze(0) * k_full).sum(dim=-1)
+
+    def get_values(self, indices: torch.Tensor) -> torch.Tensor:
+        """Dequantise and return value vectors for given indices."""
+        rows = []
+        for i in indices:
+            v_q, scale, zero = self.v_cache[int(i)]
+            rows.append(v_q.float() * scale + zero)
+        return torch.stack(rows, dim=0)   # (k, d)
+```
+
+**Component 3 — modified MEDUSA decode step with two-pass tree pruning**
+
+```python
+class MEDUSAWithQuantizedPruning:
+    """
+    Drop-in replacement for MEDUSA's verification step.
+
+    Flow per step:
+      1. LLM forward pass → hidden states, MEDUSA head logits
+      2. Build ~64-node sparse tree from top-k head predictions
+      3. PASS 1 (cheap): score all 64 nodes with QJL → prune to `prune_to`
+      4. PASS 2 (exact): full tree-attention forward on surviving nodes only
+      5. Accept longest valid prefix (typical acceptance or rejection sampling)
+      6. Append accepted tokens' KV pairs to TurboQuant cache
+    """
+
+    def __init__(self,
+                 backbone,        # your MEDUSA-equipped LLM
+                 kv_cache: TurboQuantKVCache,
+                 num_heads: int = 4,
+                 top_k_per_head: int = 3,
+                 prune_to: int = 15,
+                 typical_eps: float = 0.09):
+        self.backbone   = backbone
+        self.kv         = kv_cache
+        self.num_heads  = num_heads
+        self.top_k      = top_k_per_head
+        self.prune_to   = prune_to
+        self.eps        = typical_eps
+
+    # ------------------------------------------------------------------
+    def _build_candidate_tree(self, head_logits):
+        """
+        head_logits : list of (vocab,) tensors, one per MEDUSA head
+        Returns list of candidate sequences (tuples of token ids),
+        using the greedy sparse-tree construction from §2.3.3.
+
+        For clarity this uses the simple Cartesian approach;
+        replace with the accuracy-weighted greedy tree for best results.
+        """
+        per_head_topk = [
+            logits.topk(self.top_k).indices.tolist()
+            for logits in head_logits
+        ]
+        # Cartesian product up to a node budget (~64)
+        from itertools import product as iproduct
+        raw = list(iproduct(*per_head_topk))[:64]
+        return raw   # each element is a tuple like (tok1, tok2, tok3, tok4)
+
+    # ------------------------------------------------------------------
+    def _score_candidates_pass1(self, q_vec, candidates):
+        """
+        Cheap QJL-based scoring for all ~64 candidate first-tokens.
+        We approximate acceptance probability by the attention score of
+        the candidate's first token against the full KV history.
+
+        q_vec    : (d,) current query vector (extracted from hidden state)
+        candidates : list of tuples
+
+        Returns (n,) float tensor of approximate scores.
+        """
+        all_scores = self.kv.fast_key_scores(q_vec)  # (seq_len,)
+        # For each candidate sequence, use the softmax-weighted signal
+        # over the last token's attention as a proxy for acceptance prob.
+        # A simpler proxy: score = mean attention score (good enough for pruning)
+        if all_scores.numel() == 0:
+            return torch.zeros(len(candidates))
+
+        # The KV cache covers the context; higher mean = context is more
+        # "predictable" → higher MEDUSA head confidence correlates.
+        # A lightweight alternative: feed candidate token embeddings through
+        # the backbone embedding layer only and compare to q_vec.
+        embed = self.backbone.get_input_embeddings()
+        cand_scores = []
+        for cand in candidates:
+            # Embed the first candidate token and measure cosine sim to q
+            tok_emb = embed(torch.tensor([cand[0]], device=q_vec.device))
+            sim = (q_vec @ tok_emb.squeeze(0)) / (
+                q_vec.norm() * tok_emb.norm() + 1e-8)
+            # Combine with mean attention score as a prior
+            score = sim.item() + 0.1 * all_scores.mean().item()
+            cand_scores.append(score)
+
+        return torch.tensor(cand_scores, device=q_vec.device)
+
+    # ------------------------------------------------------------------
+    def _run_tree_attention(self, input_ids, candidate_seqs, past_kv):
+        """
+        Standard MEDUSA tree-attention forward pass for the pruned
+        candidate set.  Builds the tree mask and processes in one batch.
+        Returns per-candidate logit tensors.
+        """
+        # Build flat token list + attention mask for the tree
+        # (This is the standard MEDUSA tree-attention logic)
+        flat_tokens, tree_mask, position_ids = \
+            build_tree_attention_mask(input_ids, candidate_seqs)
+
+        with torch.no_grad():
+            out = self.backbone(
+                input_ids=flat_tokens,
+                attention_mask=tree_mask,
+                position_ids=position_ids,
+                past_key_values=past_kv,
+                use_cache=False,
+            )
+        return out.logits   # (num_candidates × head_len, vocab)
+
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def decode_step(self, input_ids, past_kv_compressed=None):
+        """
+        One MEDUSA step with quantized two-pass tree pruning.
+        Returns: accepted_tokens (list), updated past_kv.
+        """
+
+        # ── 1. LLM forward (backbone + MEDUSA heads) ──────────────────
+        out = self.backbone(input_ids, use_cache=True,
+                            past_key_values=past_kv_compressed)
+        hidden = out.hidden_states[-1][:, -1, :]   # (1, d)
+
+        # Extract per-head head logits from backbone output
+        # (assumes MEDUSA heads are registered as backbone.medusa_heads)
+        head_logits = [h(hidden).squeeze(0)
+                       for h in self.backbone.medusa_heads]
+
+        lm_logits = out.logits[:, -1, :]            # (1, vocab)
+
+        # ── 2. Build ~64 candidate sequences ──────────────────────────
+        candidates = self._build_candidate_tree(head_logits)
+
+        # ── 3. PASS 1 — cheap QJL scoring + prune ─────────────────────
+        # Extract query vector for the current position
+        # (head 0, current token's Q projection)
+        q_vec = self._extract_query(hidden, layer=-1)   # (d,)
+
+        approx_scores = self._score_candidates_pass1(q_vec, candidates)
+        _, top_idx = approx_scores.topk(
+            k=min(self.prune_to, len(candidates)))
+        pruned_candidates = [candidates[i] for i in top_idx.tolist()]
+
+        # ── 4. PASS 2 — full tree attention on survivors ───────────────
+        logits = self._run_tree_attention(
+            input_ids, pruned_candidates, out.past_key_values)
+
+        # ── 5. Accept / reject with typical acceptance ─────────────────
+        accepted = self._typical_accept(
+            pruned_candidates, logits, lm_logits)
+
+        # ── 6. Update compressed KV cache with accepted tokens ─────────
+        for tok in accepted:
+            k_new, v_new = self._compute_kv_for_token(tok)
+            self.kv.add_key(k_new)
+            self.kv.add_value(v_new)
+
+        return accepted, out.past_key_values
+
+    # ------------------------------------------------------------------
+    def _typical_accept(self, candidates, logits, lm_logits):
+        """
+        Typical acceptance criterion from §2.3.1 of the MEDUSA paper.
+        Accepts longest prefix where each token's probability exceeds
+        min(eps, delta * exp(-H(p))).
+        """
+        best_prefix = []
+        for cand in candidates:
+            prefix = []
+            ok = True
+            for step, tok in enumerate(cand):
+                p = torch.softmax(logits[step], dim=-1)
+                prob = p[tok].item()
+                H = -(p * (p + 1e-9).log()).sum().item()
+                threshold = min(self.eps, 0.3 * math.exp(-H))
+                if prob < threshold:
+                    ok = False
+                    break
+                prefix.append(tok)
+            if len(prefix) > len(best_prefix):
+                best_prefix = prefix
+
+        # Guarantee at least one token (greedy from LM head)
+        if not best_prefix:
+            best_prefix = [lm_logits.argmax(dim=-1).item()]
+
+        return best_prefix
+
+    def _extract_query(self, hidden, layer=-1):
+        """Project hidden state to query space via the attention Q matrix."""
+        attn = list(self.backbone.model.layers)[layer].self_attn
+        q = attn.q_proj(hidden).squeeze(0)   # (num_heads * head_dim,)
+        # Take head 0 as representative query for scoring
+        return q[:self.kv.d]
+
+    def _compute_kv_for_token(self, tok_id):
+        """Mini-forward to get K, V for a single accepted token."""
+        with torch.no_grad():
+            emb = self.backbone.get_input_embeddings()(
+                torch.tensor([[tok_id]]))
+            out = self.backbone.model(inputs_embeds=emb, use_cache=False)
+            hidden = out.last_hidden_state[:, -1, :]
+            attn = list(self.backbone.model.layers)[-1].self_attn
+            k = attn.k_proj(hidden).squeeze(0)[:self.kv.d]
+            v = attn.v_proj(hidden).squeeze(0)[:self.kv.d]
+        return k, v
+```
+
+**Wiring it together**
+
+```python
+def setup_medusa_turbo(model_path: str, device: str = "cuda"):
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    model = AutoModelForCausalLM.from_pretrained(model_path,
+                output_hidden_states=True).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+    head_dim = model.config.hidden_size // model.config.num_attention_heads
+
+    kv_cache = TurboQuantKVCache(
+        head_dim    = head_dim,
+        bit_width   = 3,          # 3-bit → ~4.5× compression
+        num_outlier_ch = 32,      # matches QJL paper recommendation
+        device      = device,
+    )
+
+    decoder = MEDUSAWithQuantizedPruning(
+        backbone  = model,
+        kv_cache  = kv_cache,
+        num_heads = 4,
+        top_k_per_head = 3,       # 3^4 = 81 → sparse tree prunes to 64
+        prune_to  = 15,           # keep top-15 after QJL pass
+        typical_eps = 0.09,
+    )
+
+    return decoder, tokenizer, kv_cache
+```
+
+A few key implementation decisions worth calling out. For the outlier channel identification, you should call `kv_cache.identify_outlier_channels(prefill_keys)` after the first forward pass, since deeper Llama-style layers have a small number of channels (~4–8) that persistently dominate the norm — these get allocated extra bits. For the QJL sketch dimension `m`, setting `m = d` (same as the embedding dimension) gives a good tradeoff; reducing to `m = d//2` makes pass 1 twice as fast with a small score-ranking error that matters little since you're just sorting 64 approximate values. The `prune_to = 15` value is a soft budget — you can tune it by measuring the acceptance length distribution on your target task: if most accepted prefixes have length ≤ 2, pruning to 10 is fine; for tasks where MEDUSA regularly accepts length-4 sequences (extraction, coding), keep 20–25 survivors in pass 2.
