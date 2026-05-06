@@ -2,6 +2,11 @@ import math
 import torch
 
 try:
+    from .triton_kernels import polar_decode_range_triton
+except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
+    polar_decode_range_triton = None
+
+try:
     _TORCH_COMPILE = torch.compile
 except Exception:  # pragma: no cover
     _TORCH_COMPILE = None
@@ -37,10 +42,13 @@ class KVCache:
 
 class PolarQuantizedKVCache:
     """
-    TurboQuant-style polar cache:
+    Polar-inspired cache approximation:
     - represent each 2D pair (x_even, x_odd) as radius + angle
     - quantize radius/angle to uint8
     - dequantize on-demand when attention consumes cache
+
+    Note: this is not the full PolarQuant paper algorithm, which uses shared
+    random preconditioning plus a recursive multi-level polar transform.
     """
 
     def __init__(
@@ -179,6 +187,31 @@ class PolarQuantizedKVCache:
         return even, odd
 
     def _decode_range(self, start: int, end: int, out: torch.Tensor = None) -> torch.Tensor:
+        if out is None:
+            out = torch.empty(
+                self.batch_size,
+                self.num_heads,
+                end - start,
+                self.head_dim,
+                dtype=self.dtype,
+                device=self.device,
+            )
+
+        if polar_decode_range_triton is not None:
+            decoded = polar_decode_range_triton(
+                self.radius_q,
+                self.theta_q,
+                self.radius_scale,
+                self.theta_cos_lut,
+                self.theta_sin_lut,
+                out,
+                start,
+                end,
+                self._inv_radius_levels,
+            )
+            if decoded:
+                return out
+
         radius_q = self.radius_q[:, :, start:end]
         theta_q = self.theta_q[:, :, start:end]
         scale = self.radius_scale[:, :, start:end]
@@ -203,15 +236,6 @@ class PolarQuantizedKVCache:
                 self.theta_sin_lut,
             )
 
-        if out is None:
-            out = torch.empty(
-                self.batch_size,
-                self.num_heads,
-                end - start,
-                self.head_dim,
-                dtype=self.dtype,
-                device=self.device,
-            )
         out[..., 0::2] = even.to(self.dtype)
         out[..., 1::2] = odd.to(self.dtype)
         return out

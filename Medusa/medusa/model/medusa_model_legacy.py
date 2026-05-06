@@ -158,7 +158,7 @@ class MedusaModel(nn.Module):
             filename = medusa_head_path
         else:
             filename = hf_hub_download(medusa_head_name_or_path, "medusa_lm_head.pt")
-        medusa_head_state_dict = torch.load(filename, map_location=base_model.device)
+        medusa_head_state_dict = torch.load(filename, map_location="cpu")
         model.medusa_head.load_state_dict(medusa_head_state_dict, strict=False)
 
         return model

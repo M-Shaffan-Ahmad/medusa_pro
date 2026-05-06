@@ -125,10 +125,26 @@ With scaling:     value * scale_factor
 ```
 
 ### 3.2 TurboQuant Specifics
-- **Target**: INT8 or FP8 quantization
-- **Method**: Per-channel quantization for layer weights
-- **Activation**: INT8 for activations
-- **Quality**: <1% perplexity increase with proper calibration
+- **Paper-accurate target**: online vector quantization for high-dimensional vectors, especially KV-cache vectors and inner-product retrieval vectors
+- **MSE path**: random rotation → Lloyd-Max scalar quantization of each rotated coordinate → inverse rotation
+- **Inner-product path**: MSE quantizer at one fewer bit → compute residual → store 1-bit QJL sign sketch plus residual norm for unbiased inner-product correction
+- **Important correction**: TurboQuant is not simply per-channel INT8/FP8 weight quantization. If the implementation only wraps weights with INT8/FP8 kernels, it is not implementing the TurboQuant paper.
+
+### 3.2.1 QJL / PolarQuant / Pruning Notes
+- **QJL**: stores `sign(Sk)` and `||k||` for keys, then estimates query-key inner products with `sqrt(pi/2)/m * ||k|| * <Sq, sign(Sk)>`. It is a low-precision scorer, not a final acceptance oracle.
+- **Medusa pruning**: use 1-bit/QJL-style scoring only as a conservative prefilter. Branches that are ambiguous must remain in the tree and go through the normal high-accuracy Medusa verifier.
+- **Safe turbo pruning implementation**: current code keeps aggressive pruning behind a confidence gate. If pass-1 QJL/Medusa scores are flat, it skips pruning and verifies the full Medusa tree immediately. If a pruned tree accepts no speculative token, it rewinds the KV-cache length and falls back to the full tree for that step.
+- **PolarQuant**: paper-accurate PolarQuant uses shared random preconditioning and a recursive polar transform over multiple levels, then quantizes angles with level-specific codebooks. A simple adjacent-pair radius/angle cache with per-token scales is only a polar-inspired approximation.
+- **Kernel fusion**: biggest speedups come from fusing attention and quantized-cache hot paths: `QK + mask + softmax + V`, QJL sketch scoring plus top-k, and polar/TurboQuant dequantization directly inside attention kernels.
+
+### 3.2.2 Current Fused-Kernel Status
+- **Implemented**: optional Triton fast paths in `Medusa/medusa/model/triton_kernels.py`.
+- **QJL path scoring**: fuses 1-bit sign-cache gather, dot product, token norm scaling, valid-mask handling, and path mean reduction into one Triton launch.
+- **Pruned Medusa materialization**: fuses selected-node gather and padded path-candidate gather into one Triton launch.
+- **Polar cache decode**: fuses radius/theta lookup-table decode into one Triton launch for strict compressed-cache mode.
+- **Attention status**: regular Medusa attention now uses PyTorch SDPA to fuse `QK + mask + softmax + V`. Fully direct compressed-KV attention is still not implemented; that would require a custom streaming-softmax attention kernel that consumes compressed K/V without first materializing FP16 K/V.
+- **RTX 3060 microbenchmarks**: QJL scoring improved from about `85.38 us` to `20.71 us`; pruned materialization from `29.10 us` to `19.39 us`; Polar decode from `108.06 us` to `15.38 us`.
+- **End-to-end compact benchmark**: prefix accuracy stayed `1.0` versus Medusa base, but conservative turbo pruning is still below Medusa base TPS (`medusa_base ~115 TPS`, `turbo_prune_only ~107 TPS`, `turbo_full ~87 TPS`). The remaining speed blocker is that safe pruning often verifies the full tree, so pass-1 work becomes overhead unless the confidence policy prunes frequently enough.
 
 ### 3.3 Combined Medusa + TurboQuant Benefits
 ```

@@ -2,6 +2,15 @@ import math
 import torch
 import torch.nn.functional as F
 
+try:
+    from .triton_kernels import (
+        materialize_pruned_medusa_triton,
+        qjl_path_scores_triton,
+    )
+except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
+    materialize_pruned_medusa_triton = None
+    qjl_path_scores_triton = None
+
 TOPK=10 # topk for sparse tree (10 is a placeholder and it is sufficient)
 
 
@@ -18,7 +27,15 @@ class QJLTokenSketchCache:
         self.device = torch.device(device)
 
         proj = torch.randn(self.hidden_size, self.sketch_dim, device=self.device, dtype=torch.float32)
-        self.proj = proj / math.sqrt(float(self.sketch_dim))
+        # QJL is defined with Gaussian rows. The paper orthogonalizes those rows
+        # in practice; scaling by sqrt(d) keeps the row norm comparable to N(0, I).
+        if self.sketch_dim <= self.hidden_size:
+            try:
+                proj, _ = torch.linalg.qr(proj, mode="reduced")
+                proj = proj * math.sqrt(float(self.hidden_size))
+            except RuntimeError:
+                pass
+        self.proj = proj
         self.sign_cache = torch.zeros(
             self.vocab_size,
             self.sketch_dim,
@@ -70,6 +87,19 @@ class QJLTokenSketchCache:
         safe_candidates = candidates.clamp(0, self.vocab_size - 1)
         self._cache_token_sketches(safe_candidates[valid_mask], embed_weight)
 
+        if qjl_path_scores_triton is not None:
+            triton_scores = qjl_path_scores_triton(
+                q_proj.reshape(-1),
+                self.sign_cache,
+                self.norm_cache,
+                safe_candidates,
+                valid_mask,
+                self.coeff,
+                self.sketch_dim,
+            )
+            if triton_scores is not None:
+                return triton_scores
+
         signs = self.sign_cache[safe_candidates].to(torch.float32)
         norms = self.norm_cache[safe_candidates].to(torch.float32)
         inner = (signs * q_proj).sum(dim=-1)
@@ -78,6 +108,51 @@ class QJLTokenSketchCache:
         mask_f = valid_mask.to(token_scores.dtype)
         path_lens = mask_f.sum(dim=1).clamp_min(1.0)
         return (token_scores * mask_f).sum(dim=1) / path_lens
+
+
+def _normalize_scores(scores):
+    """Z-normalize scores for rank fusion without making scale assumptions."""
+    scores = scores.to(torch.float32)
+    std = scores.std(unbiased=False)
+    if std <= 1e-6:
+        return torch.zeros_like(scores)
+    return (scores - scores.mean()) / (std + 1e-6)
+
+
+def estimate_medusa_path_scores(medusa_logits, logits, tree_indices, retrieve_indices, candidates=None):
+    """
+    Score paths using the exact root LM logit and exact Medusa-head top-k logits.
+
+    This is still a low-accuracy prior because Medusa heads are speculative, but it
+    is much better aligned with the tree construction than ranking token ids only
+    with the current hidden state.
+    """
+    root_log_probs = F.log_softmax(logits[0, -1], dim=-1)
+    if candidates is not None:
+        root_token = candidates[0, 0].clamp(0, root_log_probs.shape[0] - 1)
+        root_score = root_log_probs[root_token]
+    else:
+        root_score = torch.max(root_log_probs)
+
+    medusa_log_probs = F.log_softmax(medusa_logits[:, 0, -1], dim=-1)
+    medusa_topk = torch.topk(medusa_log_probs, TOPK, dim=-1).values
+    score_bank = torch.cat([root_score.reshape(1), medusa_topk.reshape(-1)], dim=0)
+
+    node_scores = score_bank[tree_indices]
+    node_scores_ext = torch.cat(
+        [
+            node_scores,
+            torch.full((1,), -1e4, device=node_scores.device, dtype=node_scores.dtype),
+        ],
+        dim=0,
+    )
+    node_indices = retrieve_indices[:, 1:].clone()
+    valid_mask = node_indices >= 0
+    node_indices[~valid_mask] = -1
+    path_scores = node_scores_ext[node_indices]
+    valid_mask_f = valid_mask.to(path_scores.dtype)
+    path_lens = valid_mask_f.sum(dim=1).clamp_min(1.0)
+    return (path_scores * valid_mask_f).sum(dim=1) / path_lens
 
 def pad_path(path, length, pad_value=-2):
     """
@@ -396,48 +471,71 @@ def estimate_tree_candidate_scores_1bit(
     embed_weight=None,
 ):
     """
-    Low-accuracy path scorer used for TurboQuant early pruning.
-    Current implementation is a lightweight proxy: average per-step log-prob
-    along each path (computed from root + Medusa top-k score bank).
+    Conservative low-accuracy path scorer used for TurboQuant early pruning.
+
+    The QJL component is a 1-bit approximation of LM-head inner products. We
+    fuse it with exact Medusa-head path probabilities so pruning follows the
+    same distribution that built the tree, then leave exact acceptance to the
+    high-accuracy verifier.
     """
     valid_mask = retrieve_indices >= 0
+    qjl_valid_mask = valid_mask.clone()
+    if qjl_valid_mask.shape[1] > 0:
+        # The root token is the same for every path, so it should not influence
+        # which speculative branches survive pass-1 pruning.
+        qjl_valid_mask[:, 0] = False
+    medusa_path_scores = estimate_medusa_path_scores(
+        medusa_logits,
+        logits,
+        tree_indices,
+        retrieve_indices,
+        candidates=candidates,
+    )
+    qjl_path_scores = None
     if (
         qjl_scorer is not None
         and query_state is not None
         and candidates is not None
         and embed_weight is not None
     ):
-        approx_scores = qjl_scorer.score_paths(
+        qjl_path_scores = qjl_scorer.score_paths(
             query_state=query_state,
             candidates=candidates,
-            valid_mask=valid_mask,
+            valid_mask=qjl_valid_mask,
             embed_weight=embed_weight,
+        )
+        # Medusa logits are the branch prior; QJL is only a cheap side signal.
+        approx_scores = (
+            0.75 * _normalize_scores(medusa_path_scores)
+            + 0.25 * _normalize_scores(qjl_path_scores)
         )
     else:
         # Fallback proxy when QJL sidecar is not configured.
-        root_log_probs = F.log_softmax(logits[0, -1], dim=-1)
-        root_score = torch.max(root_log_probs)
-
-        medusa_log_probs = F.log_softmax(medusa_logits[:, 0, -1], dim=-1)
-        medusa_topk = torch.topk(medusa_log_probs, TOPK, dim=-1).values
-        candidate_score_bank = torch.cat([root_score.unsqueeze(0), medusa_topk.reshape(-1)], dim=0)
-
-        tree_node_scores = candidate_score_bank[tree_indices]
-        tree_node_scores_ext = torch.cat(
-            [
-                tree_node_scores,
-                torch.full((1,), -1e4, device=tree_node_scores.device, dtype=tree_node_scores.dtype),
-            ],
-            dim=0,
-        )
-        path_scores = tree_node_scores_ext[retrieve_indices]
-        valid_mask_f = valid_mask.to(path_scores.dtype)
-        path_len_all = valid_mask_f.sum(dim=1).clamp_min(1.0)
-        approx_scores = (path_scores * valid_mask_f).sum(dim=1) / path_len_all
+        approx_scores = medusa_path_scores
 
     # Number of valid predicted tokens excluding root position.
     path_lengths = (retrieve_indices[:, 1:] >= 0).sum(dim=1)
     return approx_scores, path_lengths
+
+
+def _mandatory_top1_path_indices(retrieve_indices, tree_indices, max_paths=2):
+    """Find deepest all-top1 Medusa paths that should never be pruned."""
+    if retrieve_indices.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=retrieve_indices.device)
+
+    node_indices = retrieve_indices[:, 1:]
+    valid_mask = node_indices >= 0
+    safe_nodes = node_indices.clamp_min(0)
+    node_tree_indices = tree_indices[safe_nodes]
+    node_ranks = (node_tree_indices - 1).remainder(TOPK)
+    all_top1 = ((node_ranks == 0) | ~valid_mask).all(dim=1)
+    top1_rows = torch.where(all_top1)[0]
+    if top1_rows.numel() == 0:
+        return top1_rows
+
+    path_lengths = valid_mask.sum(dim=1)
+    order = torch.argsort(path_lengths[top1_rows], descending=True)
+    return top1_rows[order[:max_paths]]
 
 
 def select_topk_paths_for_verification(
@@ -445,24 +543,51 @@ def select_topk_paths_for_verification(
     keep_target=12,
     min_keep=10,
     max_keep=15,
+    retrieve_indices=None,
+    tree_indices=None,
 ):
     """Select a small subset of candidate paths for high-accuracy verification."""
     total_paths = approx_scores.shape[0]
     keep = max(min_keep, min(max_keep, keep_target))
     keep = min(keep, total_paths)
 
-    # Confidence-adaptive keep-size: sharper distributions need fewer high-accuracy checks.
-    score_std = approx_scores.std(unbiased=False)
-    if score_std > 1e-6:
-        z = (approx_scores.max() - approx_scores.mean()) / (score_std + 1e-6)
-        adaptive = int(round(max_keep - min(max_keep - min_keep, float(z.item()))))
-        keep = max(min_keep, min(max_keep, adaptive, total_paths))
+    # Confidence-adaptive keep-size: if pass-1 is uncertain, send more paths
+    # to exact verification instead of over-pruning.
+    if total_paths > 1:
+        top2 = torch.topk(approx_scores, k=min(2, total_paths), dim=0).values
+        margin = float((top2[0] - top2[-1]).item())
+        score_std = float(approx_scores.std(unbiased=False).item())
+        if score_std <= 1e-6 or margin < 0.25 * score_std:
+            keep = min(max_keep, total_paths)
 
-    selected = torch.topk(approx_scores, k=keep, dim=0).indices
-    # Always keep the baseline-first path for stability.
-    if not torch.any(selected == 0):
-        selected[-1] = 0
+    mandatory = torch.empty(0, dtype=torch.long, device=approx_scores.device)
+    if retrieve_indices is not None and tree_indices is not None:
+        mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+
+    if mandatory.numel() >= keep:
+        return mandatory[:keep]
+
+    ranked = torch.topk(approx_scores, k=total_paths, dim=0).indices
+    if mandatory.numel() > 0:
+        ranked = ranked[~torch.isin(ranked, mandatory)]
+
+    selected = torch.cat([mandatory, ranked[: keep - mandatory.numel()]])
     return selected
+
+
+def should_verify_full_tree(approx_scores, margin_scale=0.25):
+    """
+    Return True when pass-1 scores are too flat to safely save work via pruning.
+
+    This avoids the expensive pattern of running a pruned tree first and then
+    falling back to a full tree on obviously ambiguous steps.
+    """
+    if approx_scores.shape[0] <= 1:
+        return False
+    top2 = torch.topk(approx_scores, k=2, dim=0).values
+    margin = float((top2[0] - top2[1]).item())
+    score_std = float(approx_scores.std(unbiased=False).item())
+    return score_std <= 1e-6 or margin < float(margin_scale) * score_std
 
 
 def build_pruned_medusa_buffers(
@@ -474,6 +599,27 @@ def build_pruned_medusa_buffers(
 ):
     """
     Build a compact Medusa tree containing only nodes needed by selected paths.
+    """
+    layout = build_pruned_medusa_layout(
+        full_retrieve_indices,
+        full_medusa_position_ids,
+        full_medusa_attn_mask,
+        selected_path_indices,
+    )
+    return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
+
+
+def build_pruned_medusa_layout(
+    full_retrieve_indices,
+    full_medusa_position_ids,
+    full_medusa_attn_mask,
+    selected_path_indices,
+):
+    """
+    Build reusable indexing/mask tensors for a compact selected-path tree.
+
+    The selected layout depends only on path ids, not on token values, so callers
+    can cache this when a pruning pattern repeats.
     """
     selected_paths = full_retrieve_indices.index_select(0, selected_path_indices)
     valid_mask = selected_paths >= 0
@@ -504,13 +650,50 @@ def build_pruned_medusa_buffers(
     mapped_retrieve_indices[~valid_mask] = 0
     path_lengths = (selected_paths[:, 1:] >= 0).sum(dim=1)
 
-    pruned_tree_candidates = full_tree_candidates.index_select(1, selected_nodes)
     pruned_position_ids = full_medusa_position_ids.index_select(0, selected_nodes)
     attn2d = full_medusa_attn_mask[0, 0]
     pruned_attn = attn2d.index_select(0, selected_nodes).index_select(1, selected_nodes)
     pruned_attn = pruned_attn.unsqueeze(0).unsqueeze(0)
 
-    # Build token candidates for posterior evaluation.
+    token_indices = mapped_retrieve_indices.clone()
+    token_indices[~valid_mask] = -1
+
+    return {
+        "selected_nodes": selected_nodes,
+        "retrieve_indices": mapped_retrieve_indices,
+        "medusa_position_ids": pruned_position_ids,
+        "medusa_attn_mask": pruned_attn,
+        "token_indices": token_indices,
+        "path_lengths": path_lengths,
+    }
+
+
+def materialize_pruned_medusa_buffers(full_tree_candidates, layout):
+    """
+    Gather per-step token tensors using a prebuilt pruned tree layout.
+    """
+    selected_nodes = layout["selected_nodes"]
+    token_indices = layout["token_indices"]
+
+    if materialize_pruned_medusa_triton is not None:
+        fast_materialized = materialize_pruned_medusa_triton(
+            full_tree_candidates,
+            selected_nodes,
+            token_indices,
+        )
+        if fast_materialized is not None:
+            pruned_tree_candidates, pruned_candidates = fast_materialized
+            return {
+                "tree_candidates": pruned_tree_candidates,
+                "retrieve_indices": layout["retrieve_indices"],
+                "medusa_position_ids": layout["medusa_position_ids"],
+                "medusa_attn_mask": layout["medusa_attn_mask"],
+                "candidates": pruned_candidates,
+                "path_lengths": layout["path_lengths"],
+            }
+
+    pruned_tree_candidates = full_tree_candidates.index_select(1, selected_nodes)
+
     pruned_tree_ext = torch.cat(
         [
             pruned_tree_candidates,
@@ -522,8 +705,6 @@ def build_pruned_medusa_buffers(
         ],
         dim=1,
     )
-    token_indices = mapped_retrieve_indices.clone()
-    token_indices[~valid_mask] = -1
     # tree candidates are batch-1 by construction in this decoder path.
     if pruned_tree_ext.shape[0] != 1:
         raise ValueError("build_pruned_medusa_buffers currently supports batch size 1.")
@@ -532,11 +713,11 @@ def build_pruned_medusa_buffers(
 
     return {
         "tree_candidates": pruned_tree_candidates,
-        "retrieve_indices": mapped_retrieve_indices,
-        "medusa_position_ids": pruned_position_ids,
-        "medusa_attn_mask": pruned_attn,
+        "retrieve_indices": layout["retrieve_indices"],
+        "medusa_position_ids": layout["medusa_position_ids"],
+        "medusa_attn_mask": layout["medusa_attn_mask"],
         "candidates": pruned_candidates,
-        "path_lengths": path_lengths,
+        "path_lengths": layout["path_lengths"],
     }
 
 
