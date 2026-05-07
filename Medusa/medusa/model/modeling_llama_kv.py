@@ -984,7 +984,15 @@ class LlamaModel(LlamaPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
         # embed positions
-        if attention_mask is None:
+        if attention_mask is not None and attention_mask.dim() == 4:
+            expected_mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
+            if attention_mask.shape != expected_mask_shape:
+                raise ValueError(
+                    f"4D attention mask should be of size {expected_mask_shape}, but is {attention_mask.shape}"
+                )
+            attention_mask = attention_mask.to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+            padding_mask = None
+        elif attention_mask is None:
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
@@ -995,9 +1003,10 @@ class LlamaModel(LlamaPreTrainedModel):
             else:
                 padding_mask = None
 
-        attention_mask = self._prepare_decoder_attention_mask(
-            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
-        )
+        if attention_mask.dim() != 4:
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+            )
         # [MODIFIED] 
         self.attention_mask = attention_mask
         self.position_ids = position_ids

@@ -1,0 +1,45 @@
+category,mode,tokens,prompt_tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_match_vs_base,text
+hpc,medusa_base,64,37,0.818510551999907,0.041391228999827945,78.19080626831952,2347.162109375,2458.0,1.0,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std"
+hpc,turbo_force_fast_fulltree,64,37,0.7771841989999757,0.029796337000107087,82.34856046012072,2228.064453125,2326.0,1.0,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std"
+hpc,turbo_node_budget_24_qjl,64,37,0.8533196260000295,0.047473600999865084,75.00120476544365,2233.15771484375,2326.0,1.0,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std"
+hpc,turbo_node_budget_32_qjl,64,37,0.8575858609999614,0.030949566000117557,74.62809604320526,2233.16259765625,2326.0,1.0,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std"
+systems,medusa_base,55,29,0.850583922999931,0.03125072099987847,64.66146198251676,2352.26416015625,2460.0,1.0,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a"
+systems,turbo_force_fast_fulltree,55,29,0.7924829300000056,0.031591660000003685,69.40212579720753,2230.69482421875,2326.0,1.0,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a"
+systems,turbo_node_budget_24_qjl,55,29,0.8145982980001918,0.03000687700000526,67.51794121719003,2230.6962890625,2326.0,1.0,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a"
+systems,turbo_node_budget_32_qjl,55,29,0.8069111550000798,0.030265430000099514,68.16115957647723,2231.0263671875,2326.0,1.0,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a"
+medium_context,medusa_base,55,41,0.8067579009998553,0.030939902000000075,68.1741076620827,2352.27783203125,2460.0,1.0,Cache locality refers to the ability of a CPU or GPU to access data stored in memory based on the location of the data in the memory hierarchy. Memory bandwidth refers to the speed at which data can be accessed from memory. Kernel launch overhead refers to the time taken
+medium_context,turbo_force_fast_fulltree,55,41,0.7820494200000212,0.029893209999954706,70.32803630235863,2234.41748046875,2326.0,1.0,Cache locality refers to the ability of a CPU or GPU to access data stored in memory based on the location of the data in the memory hierarchy. Memory bandwidth refers to the speed at which data can be accessed from memory. Kernel launch overhead refers to the time taken
+medium_context,turbo_node_budget_24_qjl,55,41,0.832033661999958,0.031672414000013305,66.10309475676331,2234.4189453125,2326.0,1.0,Cache locality refers to the ability of a CPU or GPU to access data stored in memory based on the location of the data in the memory hierarchy. Memory bandwidth refers to the speed at which data can be accessed from memory. Kernel launch overhead refers to the time taken
+medium_context,turbo_node_budget_32_qjl,55,41,0.811358392000102,0.031067255999914778,67.78755300036767,2234.423828125,2326.0,1.0,Cache locality refers to the ability of a CPU or GPU to access data stored in memory based on the location of the data in the memory hierarchy. Memory bandwidth refers to the speed at which data can be accessed from memory. Kernel launch overhead refers to the time taken

@@ -10,6 +10,11 @@ from transformers import AutoTokenizer, AutoConfig
 import os
 from huggingface_hub import hf_hub_download
 
+try:
+    from safetensors.torch import load_file as load_safetensors_file
+except Exception:  # pragma: no cover - safetensors is optional for legacy heads
+    load_safetensors_file = None
+
 
 class ResBlock(nn.Module):
     """
@@ -42,6 +47,59 @@ class ResBlock(nn.Module):
         """
         return x + self.act(self.linear(x))
 
+
+def _medusa_uses_base_lm_head(config):
+    version = str(getattr(config, "version", "")).lower()
+    return bool(getattr(config, "medusa_head_uses_base_lm_head", False)) or version in {
+        "2",
+        "medusa2",
+        "medusa-2",
+    }
+
+
+def _make_medusa_head(hidden_size, vocab_size, num_layers, uses_base_lm_head):
+    layers = [ResBlock(hidden_size) for _ in range(num_layers)]
+    if not uses_base_lm_head:
+        layers.append(nn.Linear(hidden_size, vocab_size, bias=False))
+    return nn.Sequential(*layers)
+
+
+def _load_medusa_head_state_dict(pretrained_model_name_or_path):
+    local_safetensors = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.safetensors")
+    local_pt = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.pt")
+    if os.path.exists(local_safetensors):
+        filename = local_safetensors
+    elif os.path.exists(local_pt):
+        filename = local_pt
+    else:
+        try:
+            filename = hf_hub_download(pretrained_model_name_or_path, "medusa_lm_head.safetensors")
+        except Exception:
+            filename = hf_hub_download(pretrained_model_name_or_path, "medusa_lm_head.pt")
+
+    if filename.endswith(".safetensors"):
+        if load_safetensors_file is None:
+            raise ImportError("Loading medusa_lm_head.safetensors requires safetensors.")
+        return load_safetensors_file(filename, device="cpu")
+    try:
+        return torch.load(filename, map_location="cpu", weights_only=True)
+    except TypeError:  # pragma: no cover - older torch
+        return torch.load(filename, map_location="cpu")
+
+
+def _compute_medusa_logits(model, hidden_states):
+    if getattr(model, "medusa_head_uses_base_lm_head", False):
+        medusa_hidden = torch.stack(
+            [model.medusa_head[i](hidden_states) for i in range(model.medusa)],
+            dim=0,
+        )
+        return model.base_model.lm_head(medusa_hidden)
+    return torch.stack(
+        [model.medusa_head[i](hidden_states) for i in range(model.medusa)],
+        dim=0,
+    )
+
+
 class MedusaModel(PreTrainedModel):
     """The Medusa Language Model Head.
 
@@ -67,14 +125,17 @@ class MedusaModel(PreTrainedModel):
         self.vocab_size = config.vocab_size
         self.medusa = medusa_num_heads
         self.medusa_num_layers = medusa_num_layers
+        self.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(config)
         self.base_model_name_or_path = base_model_name_or_path
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
         # Create a list of Medusa heads
         self.medusa_head = nn.ModuleList(
             [
-                nn.Sequential(
-                    *([ResBlock(self.hidden_size)] * medusa_num_layers),
-                    nn.Linear(self.hidden_size, self.vocab_size, bias=False),
+                _make_medusa_head(
+                    self.hidden_size,
+                    self.vocab_size,
+                    medusa_num_layers,
+                    self.medusa_head_uses_base_lm_head,
                 )
                 for _ in range(medusa_num_heads)
             ]
@@ -114,18 +175,15 @@ class MedusaModel(PreTrainedModel):
             base_model_config = AutoConfig.from_pretrained(medusa_config.base_model_name_or_path)
             base_model_config.medusa_num_heads = getattr(medusa_config, "medusa_num_heads", 5)
             base_model_config.medusa_num_layers = getattr(medusa_config, "medusa_num_layers", 1)
+            base_model_config.version = getattr(medusa_config, "version", None)
+            base_model_config.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(medusa_config)
             model = super().from_pretrained(
                 medusa_config.base_model_name_or_path,
                 *args,
                 **kwargs,
                 config=base_model_config,
             )
-            medusa_head_path = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.pt")
-            if os.path.exists(medusa_head_path):
-                filename = medusa_head_path
-            else:
-                filename = hf_hub_download(pretrained_model_name_or_path, "medusa_lm_head.pt")
-            medusa_head_state_dict = torch.load(filename, map_location="cpu")
+            medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
             model.medusa_head.load_state_dict(medusa_head_state_dict, strict=False)
             return model
 
@@ -137,6 +195,8 @@ class MedusaModel(PreTrainedModel):
         output_orig=False,
         position_ids=None,
         medusa_forward=False,
+        return_medusa_logits=True,
+        last_token_logits=False,
         **kwargs,
     ):
         """Forward pass of the MedusaModel.
@@ -184,17 +244,15 @@ class MedusaModel(PreTrainedModel):
                 position_ids=position_ids,
                 **kwargs,
             )
+            hidden_states = outputs[0]
+            logits_hidden_states = hidden_states[:, -1:, :] if last_token_logits else hidden_states
             if output_orig:
-                orig = self.base_model.lm_head(outputs[0])
-        # Clone the output hidden states
-        hidden_states = outputs[0].clone()
-        medusa_logits = []
-        # TODO: Consider parallelizing this loop for efficiency?
-        for i in range(self.medusa):
-            medusa_logits.append(self.medusa_head[i](hidden_states))
+                orig = self.base_model.lm_head(logits_hidden_states)
+        hidden_states = logits_hidden_states if last_token_logits else outputs[0]
+        medusa_logits = _compute_medusa_logits(self, hidden_states) if return_medusa_logits else None
         if output_orig:
-            return torch.stack(medusa_logits, dim=0), outputs, orig
-        return torch.stack(medusa_logits, dim=0)
+            return medusa_logits, outputs, orig
+        return medusa_logits
 
 
 
@@ -225,14 +283,17 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         self.vocab_size = config.vocab_size
         self.medusa = medusa_num_heads
         self.medusa_num_layers = medusa_num_layers
+        self.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(config)
         self.base_model_name_or_path = base_model_name_or_path
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
         # Create a list of Medusa heads
         self.medusa_head = nn.ModuleList(
             [
-                nn.Sequential(
-                    *([ResBlock(self.hidden_size)] * medusa_num_layers),
-                    nn.Linear(self.hidden_size, self.vocab_size, bias=False),
+                _make_medusa_head(
+                    self.hidden_size,
+                    self.vocab_size,
+                    medusa_num_layers,
+                    self.medusa_head_uses_base_lm_head,
                 )
                 for _ in range(medusa_num_heads)
             ]
@@ -272,18 +333,15 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             base_model_config = AutoConfig.from_pretrained(medusa_config.base_model_name_or_path)
             base_model_config.medusa_num_heads = getattr(medusa_config, "medusa_num_heads", 5)
             base_model_config.medusa_num_layers = getattr(medusa_config, "medusa_num_layers", 1)
+            base_model_config.version = getattr(medusa_config, "version", None)
+            base_model_config.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(medusa_config)
             model = super().from_pretrained(
                 medusa_config.base_model_name_or_path,
                 *args,
                 **kwargs,
                 config=base_model_config,
             )
-            medusa_head_path = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.pt")
-            if os.path.exists(medusa_head_path):
-                filename = medusa_head_path
-            else:
-                filename = hf_hub_download(pretrained_model_name_or_path, "medusa_lm_head.pt")
-            medusa_head_state_dict = torch.load(filename, map_location="cpu")
+            medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
             model.medusa_head.load_state_dict(medusa_head_state_dict, strict=False)
             return model
 
@@ -295,6 +353,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         output_orig=False,
         position_ids=None,
         medusa_forward=False,
+        return_medusa_logits=True,
+        last_token_logits=False,
         **kwargs,
     ):
         """Forward pass of the MedusaModel.
@@ -328,17 +388,15 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 position_ids=position_ids,
                 **kwargs,
             )
+            hidden_states = outputs[0]
+            logits_hidden_states = hidden_states[:, -1:, :] if last_token_logits else hidden_states
             if output_orig:
-                orig = self.base_model.lm_head(outputs[0])
-        # Clone the output hidden states
-        hidden_states = outputs[0].clone()
-        medusa_logits = []
-        # TODO: Consider parallelizing this loop for efficiency?
-        for i in range(self.medusa):
-            medusa_logits.append(self.medusa_head[i](hidden_states))
+                orig = self.base_model.lm_head(logits_hidden_states)
+        hidden_states = logits_hidden_states if last_token_logits else outputs[0]
+        medusa_logits = _compute_medusa_logits(self, hidden_states) if return_medusa_logits else None
         if output_orig:
-            return torch.stack(medusa_logits, dim=0), outputs, orig
-        return torch.stack(medusa_logits, dim=0)
+            return medusa_logits, outputs, orig
+        return medusa_logits
 
     def medusa_generate(
         self,
@@ -371,6 +429,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_prune_decisive_keep=8,
         turbo_prune_use_qjl=True,
         turbo_force_full_tree_fast_verifier=False,
+        turbo_lazy_tree_medusa_logits=True,
         turbo_skip_threshold_high=1.1,
         turbo_skip_threshold_low=-0.1,
         turbo_kv_max_length=2048,
@@ -385,6 +444,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
         turbo_qjl_dim=128,
+        stream=True,
     ):
         """
         Args:
@@ -429,6 +489,9 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 scoring after the cheap Medusa prescreen passes.
             turbo_force_full_tree_fast_verifier (bool, optional): Skip Turbo pruning/planning
                 entirely and use the greedy full-tree verifier fast path when `temperature=0`.
+            turbo_lazy_tree_medusa_logits (bool, optional): In greedy Turbo verification,
+                compute Medusa-head logits only for the accepted tree node instead of every
+                tree node. This preserves outputs and removes a large full-vocab projection.
             turbo_skip_threshold_high (float, optional): If pass-1 top prob exceeds this, skip pass-2 and accept one token.
             turbo_skip_threshold_low (float, optional): If pass-1 top prob is below this, skip pass-2 and do greedy one token.
             turbo_kv_max_length (int, optional): Maximum cache length for KV pre-allocation.
@@ -455,6 +518,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 direct compressed-KV Triton attention path instead of materializing FP16 K/V.
             turbo_compile_decode (bool, optional): Use torch.compile on tensorized polar decode kernel.
             turbo_qjl_dim (int, optional): Sketch dimension for 1-bit QJL sidecar path scoring.
+            stream (bool, optional): If True, yield decoded text after every Medusa step.
+                If False, keep generation non-streaming and yield decoded text only once at the end.
         Returns:
             torch.Tensor: Output token IDs.
 
@@ -558,6 +623,14 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             self.kv_compile_decode = turbo_compile_decode
 
         input_len = input_ids.shape[1]
+        input_ids_buffer = torch.empty(
+            input_ids.shape[0],
+            effective_kv_max_length,
+            dtype=input_ids.dtype,
+            device=input_ids.device,
+        )
+        input_ids_buffer[:, :input_len].copy_(input_ids)
+        input_ids = input_ids_buffer[:, :input_len]
         full_path_lengths = (medusa_buffers["retrieve_indices"][:, 1:] >= 0).sum(dim=1)
         turbo_pruned_layout_cache = self.turbo_pruned_layout_cache if turbo_quant else None
         embed_weight = None
@@ -589,14 +662,27 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
 
         reset_medusa_mode(self)
         # Initialize tree attention mask and process prefill tokens
-        medusa_logits, logits, query_state = initialize_medusa(
-            input_ids,
-            self,
-            medusa_buffers["medusa_attn_mask"],
-            past_key_values,
-            return_query_state=True,
-        )
-        query_state = query_state.detach()
+        need_turbo_query_state = bool(turbo_quant and not turbo_force_full_tree_fast_verifier)
+        if need_turbo_query_state:
+            medusa_logits, logits, query_state = initialize_medusa(
+                input_ids,
+                self,
+                medusa_buffers["medusa_attn_mask"],
+                past_key_values,
+                return_query_state=True,
+                last_token_logits=turbo_quant,
+            )
+            query_state = query_state.detach()
+        else:
+            medusa_logits, logits = initialize_medusa(
+                input_ids,
+                self,
+                medusa_buffers["medusa_attn_mask"],
+                past_key_values,
+                return_query_state=False,
+                last_token_logits=turbo_quant,
+            )
+            query_state = None
 
         new_token = 0
         last_round_token = 0
@@ -674,21 +760,30 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     )
                     query_state = outputs[0][:, -1, :].detach()
                     self.base_model.model.medusa_mask = medusa_buffers["medusa_attn_mask"]
-                    input_ids = torch.cat([input_ids, next_token], dim=-1)
+                    input_ids = append_input_ids(
+                        input_ids,
+                        next_token,
+                        input_ids_buffer=input_ids_buffer,
+                    )
                     new_token += 1
-                    yield {
-                        "text": self.tokenizer.decode(
-                            input_ids[0, input_len:],
-                            skip_special_tokens=True,
-                            spaces_between_special_tokens=False,
-                            clean_up_tokenization_spaces=True,
-                        )
-                    }
-                    if self.tokenizer.eos_token_id in input_ids[0, input_len:]:
+                    should_stop = self.tokenizer.eos_token_id in input_ids[0, input_len:]
+                    if stream:
+                        yield {
+                            "text": self.tokenizer.decode(
+                                input_ids[0, input_len:],
+                                skip_special_tokens=True,
+                                spaces_between_special_tokens=False,
+                                clean_up_tokenization_spaces=True,
+                            )
+                        }
+                    if should_stop:
                         break
                     continue
 
                 use_tree_update = False
+                lazy_tree_medusa_logits = bool(
+                    turbo_lazy_tree_medusa_logits and temperature == 0
+                )
                 if verify_full_tree:
                     if temperature == 0:
                         medusa_logits, logits, outputs, tree_hidden = tree_decoding(
@@ -701,6 +796,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                             medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
                             return_hidden=True,
                             gather_paths=False,
+                            compute_medusa_logits=not lazy_tree_medusa_logits,
+                            fast_attention_mask=True,
                         )
                         best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
                             logits,
@@ -758,6 +855,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                                 medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
                                 return_hidden=True,
                                 gather_paths=False,
+                                compute_medusa_logits=not lazy_tree_medusa_logits,
+                                fast_attention_mask=True,
                             )
                             best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
                                 logits,
@@ -802,6 +901,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                                 medusa_attn_mask=pruned["medusa_attn_mask"],
                                 return_hidden=True,
                                 gather_paths=False,
+                                compute_medusa_logits=not lazy_tree_medusa_logits,
+                                fast_attention_mask=True,
                             )
                             best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
                                 logits,
@@ -851,6 +952,8 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                                     medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
                                     return_hidden=True,
                                     gather_paths=False,
+                                    compute_medusa_logits=not lazy_tree_medusa_logits,
+                                    fast_attention_mask=True,
                                 )
                                 best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
                                     logits,
@@ -901,9 +1004,16 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                         past_key_values_data,
                         current_length_data,
                         past_key_values=past_key_values,
+                        input_ids_buffer=input_ids_buffer,
                     )
                     node_idx = update_retrieve_indices[best_candidate, accept_length].reshape(1)
-                    query_state = tree_hidden.index_select(0, node_idx).detach()
+                    accepted_hidden = None
+                    if medusa_logits is None or need_turbo_query_state:
+                        accepted_hidden = tree_hidden.index_select(0, node_idx)
+                    if medusa_logits is None:
+                        medusa_logits = _compute_medusa_logits(self, accepted_hidden.unsqueeze(0))
+                    if need_turbo_query_state:
+                        query_state = accepted_hidden.detach()
                 else:
                     input_ids, logits, medusa_logits, new_token = update_inference_inputs(
                         input_ids,
@@ -918,6 +1028,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                         past_key_values_data,
                         current_length_data,
                         past_key_values=past_key_values,
+                        input_ids_buffer=input_ids_buffer,
                     )
                     best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
                     accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
@@ -958,11 +1069,27 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     past_key_values_data,
                     current_length_data,
                     past_key_values=past_key_values,
+                    input_ids_buffer=input_ids_buffer,
                 )
                 best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
                 accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
                 query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
 
+            should_stop = self.tokenizer.eos_token_id in input_ids[0, input_len:]
+            if stream:
+                yield {
+                    "text": self.tokenizer.decode(
+                        input_ids[0, input_len:],
+                        skip_special_tokens=True,
+                        spaces_between_special_tokens=False,
+                        clean_up_tokenization_spaces=True,
+                    )
+                }
+
+            if should_stop:
+                break
+
+        if not stream:
             yield {
                 "text": self.tokenizer.decode(
                     input_ids[0, input_len:],
@@ -971,9 +1098,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     clean_up_tokenization_spaces=True,
                 )
             }
-
-            if self.tokenizer.eos_token_id in input_ids[0, input_len:]:
-                break
 
 # Currently only support LlamaModel
 MedusaModel = MedusaLlamaModel

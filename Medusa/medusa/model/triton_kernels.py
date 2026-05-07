@@ -16,6 +16,14 @@ def _is_cuda_tensor(tensor):
 
 
 if TRITON_AVAILABLE:
+    @triton.jit
+    def _popcount_u32(x):
+        x = x.to(tl.uint32)
+        x = x - ((x >> 1) & 0x55555555)
+        x = (x & 0x33333333) + ((x >> 2) & 0x33333333)
+        x = (x + (x >> 4)) & 0x0F0F0F0F
+        return ((x * 0x01010101) >> 24).to(tl.int32)
+
 
     @triton.jit
     def _qjl_path_scores_kernel(
@@ -53,6 +61,41 @@ if TRITON_AVAILABLE:
             count += tl.where(is_valid, 1.0, 0.0)
 
         tl.store(out + path_id, acc / tl.maximum(count, 1.0))
+
+
+    @triton.jit
+    def _packed_kv_qjl_node_scores_kernel(
+        query_bits,
+        key_bits,
+        partial,
+        kv_len: tl.constexpr,
+        max_length: tl.constexpr,
+        num_heads: tl.constexpr,
+        words: tl.constexpr,
+        num_blocks: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        BLOCK_W: tl.constexpr,
+    ):
+        node = tl.program_id(0)
+        head = tl.program_id(1)
+        block = tl.program_id(2)
+        k_offsets = (block * BLOCK_K) + tl.arange(0, BLOCK_K)
+        w_offsets = tl.arange(0, BLOCK_W)
+
+        q = tl.load(
+            query_bits + (node * num_heads + head) * words + w_offsets,
+            mask=w_offsets < words,
+            other=0,
+        )
+        k = tl.load(
+            key_bits + (head * max_length + k_offsets[:, None]) * words + w_offsets[None, :],
+            mask=(k_offsets[:, None] < kv_len) & (w_offsets[None, :] < words),
+            other=0,
+        )
+        matches = _popcount_u32(~(q[None, :] ^ k))
+        score_by_word = tl.sum(matches, axis=0)
+        score = tl.sum(score_by_word, axis=0)
+        tl.store(partial + (node * num_heads + head) * num_blocks + block, score)
 
 
     @triton.jit
@@ -1361,6 +1404,51 @@ def qjl_path_scores_triton(
         num_warps=4 if block_m >= 128 else 1,
     )
     return out
+
+
+def packed_kv_qjl_node_scores_triton(query_bits, key_bits, kv_len, block_k=1024):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(query_bits):
+        return None
+    if not _is_cuda_tensor(key_bits):
+        return None
+    if query_bits.dtype != torch.int32 or key_bits.dtype != torch.int32:
+        return None
+    if query_bits.dim() != 3 or key_bits.dim() != 3:
+        return None
+    n_nodes, num_heads, words = query_bits.shape
+    key_heads, max_length, key_words = key_bits.shape
+    if int(num_heads) != int(key_heads) or int(words) != int(key_words):
+        return None
+    kv_len = min(int(kv_len), int(max_length))
+    if n_nodes <= 0 or num_heads <= 0 or words <= 0 or kv_len <= 0:
+        return None
+    block_w = triton.next_power_of_2(int(words))
+    if block_w > 32:
+        return None
+    block_k = triton.next_power_of_2(int(max(16, min(int(block_k), kv_len))))
+    num_blocks = triton.cdiv(kv_len, block_k)
+    partial = torch.empty(
+        (int(n_nodes), int(num_heads), int(num_blocks)),
+        device=query_bits.device,
+        dtype=torch.int32,
+    )
+    try:
+        _packed_kv_qjl_node_scores_kernel[(int(n_nodes), int(num_heads), int(num_blocks))](
+            query_bits.contiguous(),
+            key_bits.contiguous(),
+            partial,
+            kv_len=int(kv_len),
+            max_length=int(max_length),
+            num_heads=int(num_heads),
+            words=int(words),
+            num_blocks=int(num_blocks),
+            BLOCK_K=block_k,
+            BLOCK_W=block_w,
+            num_warps=4,
+        )
+    except Exception:
+        return None
+    return partial.to(torch.float32).sum(dim=(1, 2))
 
 
 def turbo_qjl_select_paths_triton(

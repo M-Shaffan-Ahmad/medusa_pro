@@ -972,7 +972,14 @@ class MistralModel(MistralPreTrainedModel):
         padding_mask = None
 
         # embed positions
-        if attention_mask is None:
+        if attention_mask is not None and attention_mask.dim() == 4:
+            expected_mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
+            if attention_mask.shape != expected_mask_shape:
+                raise ValueError(
+                    f"4D attention mask should be of size {expected_mask_shape}, but is {attention_mask.shape}"
+                )
+            attention_mask = attention_mask.to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+        elif attention_mask is None:
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
@@ -992,13 +999,14 @@ class MistralModel(MistralPreTrainedModel):
                     " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
                 )
 
-        attention_mask = self._prepare_decoder_attention_mask(
-            attention_mask,
-            (batch_size, seq_length),
-            inputs_embeds,
-            past_key_values_length,
-            sliding_window=self.config.sliding_window,
-        )
+        if attention_mask.dim() != 4:
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask,
+                (batch_size, seq_length),
+                inputs_embeds,
+                past_key_values_length,
+                sliding_window=self.config.sliding_window,
+            )
         # [MODIFIED] 
         self.attention_mask = attention_mask
         self.position_ids = position_ids

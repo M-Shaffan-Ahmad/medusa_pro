@@ -14,9 +14,34 @@ except Exception:  # pragma: no cover
 
 
 class KVCache:
-    def __init__(self, data, current_length):
+    def __init__(self, data, current_length, qjl_sketch_dim: int = 0):
         self.data = data
         self.current_length = current_length
+        self.qjl_sketch_dim = int(qjl_sketch_dim)
+        self.qjl_words = 0
+        self.qjl_proj = None
+        self.qjl_bits = None
+        self.qjl_pack_weights = None
+        if self.qjl_sketch_dim > 0:
+            if self.qjl_sketch_dim % 32 != 0:
+                raise ValueError("qjl_sketch_dim must be a multiple of 32.")
+            self.qjl_words = self.qjl_sketch_dim // 32
+            self.qjl_proj = _get_packed_qjl_projection(
+                int(data.shape[-1]),
+                self.qjl_sketch_dim,
+                data.device,
+            )
+            self.qjl_bits = torch.zeros(
+                int(data.shape[0]),
+                int(data.shape[1]),
+                int(data.shape[2]),
+                self.qjl_words,
+                dtype=torch.int32,
+                device=data.device,
+            )
+            self.qjl_pack_weights = (
+                1 << torch.arange(32, device=data.device, dtype=torch.int64)
+            )
 
     @property
     def shape(self):
@@ -31,24 +56,75 @@ class KVCache:
         tgt = self.data.index_select(dim, indices)
         dst = self.data.narrow(dim, prev_length, tgt.shape[dim])
         dst.copy_(tgt, non_blocking=True)
+        if self.qjl_bits is not None:
+            tgt_bits = self.qjl_bits.index_select(dim, indices)
+            self.qjl_bits.narrow(dim, prev_length, tgt_bits.shape[dim]).copy_(
+                tgt_bits,
+                non_blocking=True,
+            )
         self.current_length.fill_(prev_length + tgt.shape[dim])
 
     def cat(self, tensor: torch.Tensor, dim: int = 2):
         start = int(self.current_length.item())
         dst = self.data.narrow(dim, start, tensor.shape[dim])
         dst.copy_(tensor)
+        if self.qjl_bits is not None:
+            packed = self.pack_qjl_bits(tensor)
+            self.qjl_bits.narrow(dim, start, tensor.shape[dim]).copy_(
+                packed,
+                non_blocking=True,
+            )
         self.current_length.fill_(start + tensor.shape[dim])
         return torch.narrow(self.data, 2, 0, int(self.current_length.item()))
+
+    def pack_qjl_bits(self, tensor: torch.Tensor):
+        if self.qjl_proj is None:
+            return None
+        projected = tensor.to(torch.float32) @ self.qjl_proj
+        bits = (projected >= 0).to(torch.int64)
+        weights = self.qjl_pack_weights.view(*([1] * (bits.dim() - 1)), 32)
+        packed = (
+            bits.view(*bits.shape[:-1], self.qjl_words, 32) * weights
+        ).sum(dim=-1)
+        return packed.to(torch.int32)
 
 
 _TURBO_ROTATION_CACHE = {}
 _TURBO_CODEBOOK_CACHE = {}
 _TURBO_RESIDUAL_PROJ_CACHE = {}
+_PACKED_QJL_PROJ_CACHE = {}
 
 
 def _cache_key(device, *parts):
     device = torch.device(device)
     return (device.type, device.index, *parts)
+
+
+def _get_packed_qjl_projection(head_dim: int, sketch_dim: int, device: torch.device):
+    sketch_dim = int(sketch_dim)
+    if sketch_dim <= 0 or sketch_dim % 32 != 0:
+        raise ValueError("Packed QJL sketch_dim must be a positive multiple of 32.")
+    key = _cache_key(device, "packed_qjl", int(head_dim), sketch_dim)
+    proj = _PACKED_QJL_PROJ_CACHE.get(key)
+    if proj is not None:
+        return proj
+
+    gen = torch.Generator(device="cpu")
+    gen.manual_seed(20260507 + int(head_dim) * 17 + sketch_dim)
+    blocks = []
+    remaining = sketch_dim
+    while remaining > 0:
+        mat = torch.randn(int(head_dim), int(head_dim), generator=gen, dtype=torch.float32)
+        block, _ = torch.linalg.qr(mat, mode="reduced")
+        signs = torch.sign(torch.diagonal(block))
+        signs[signs == 0] = 1
+        block = block * signs
+        take = min(remaining, int(head_dim))
+        blocks.append(block[:, :take] * math.sqrt(float(head_dim)))
+        remaining -= take
+    proj = torch.cat(blocks, dim=1).contiguous().to(device=device)
+    _PACKED_QJL_PROJ_CACHE[key] = proj
+    return proj
 
 
 def _get_turbo_rotation(head_dim: int, device: torch.device):
@@ -945,6 +1021,8 @@ def initialize_past_key_values(
     turbo_hybrid_hot_window: int = 512,
     turbo_runtime_dequant_cache: bool = True,
     turbo_compile_decode: bool = False,
+    packed_qjl_sketch_dim: int = 0,
+    packed_qjl_layer: int = -1,
 ):
     config = model.config
     batch_size = 1
@@ -963,6 +1041,11 @@ def initialize_past_key_values(
         return model.device
 
     layer_devices = [_cache_device_for_layer(i) for i in range(num_layers)]
+    packed_qjl_sketch_dim = int(max(0, packed_qjl_sketch_dim))
+    packed_qjl_layer = int(packed_qjl_layer)
+    if packed_qjl_layer < 0:
+        packed_qjl_layer = num_layers + packed_qjl_layer
+    packed_qjl_layer = min(max(0, packed_qjl_layer), num_layers - 1)
 
     current_length_data = torch.zeros(num_layers * 2, dtype=torch.long, device="cpu")
     past_key_values = []
@@ -1048,7 +1131,13 @@ def initialize_past_key_values(
             )
             past_key_values.append(
                 [
-                    KVCache(layer_data[j], current_length_data[i * 2 + j])
+                    KVCache(
+                        layer_data[j],
+                        current_length_data[i * 2 + j],
+                        qjl_sketch_dim=packed_qjl_sketch_dim
+                        if (j == 0 and i == packed_qjl_layer)
+                        else 0,
+                    )
                     for j in range(2)
                 ]
             )
@@ -1066,7 +1155,13 @@ def initialize_past_key_values(
     for i in range(num_layers):
         past_key_values.append(
             [
-                KVCache(past_key_values_data[i * 2 + j], current_length_data[i * 2 + j])
+                KVCache(
+                    past_key_values_data[i * 2 + j],
+                    current_length_data[i * 2 + j],
+                    qjl_sketch_dim=packed_qjl_sketch_dim
+                    if (j == 0 and i == packed_qjl_layer)
+                    else 0,
+                )
                 for j in range(2)
             ]
         )

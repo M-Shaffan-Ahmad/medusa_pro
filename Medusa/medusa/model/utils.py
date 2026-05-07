@@ -7,6 +7,7 @@ try:
         copy_selected_kv_cache_triton,
         greedy_tree_posterior_triton,
         materialize_pruned_medusa_triton,
+        packed_kv_qjl_node_scores_triton,
         qjl_path_scores_triton,
         turbo_qjl_select_paths_triton,
     )
@@ -14,16 +15,44 @@ except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
     copy_selected_kv_cache_triton = None
     greedy_tree_posterior_triton = None
     materialize_pruned_medusa_triton = None
+    packed_kv_qjl_node_scores_triton = None
     qjl_path_scores_triton = None
     turbo_qjl_select_paths_triton = None
 
 TOPK=10 # topk for sparse tree (10 is a placeholder and it is sufficient)
 
 
+def append_input_ids(input_ids, append_tokens, input_ids_buffer=None):
+    """
+    Append tokens while optionally reusing a preallocated decode buffer.
+
+    Streaming generation still receives a growing `input_ids` view, but the
+    token storage no longer has to be reallocated/copied every accepted step.
+    """
+    if append_tokens.dim() == 1:
+        append_tokens = append_tokens.unsqueeze(0)
+    prev_len = input_ids.shape[1]
+    append_len = append_tokens.shape[1]
+    next_len = prev_len + append_len
+    if (
+        input_ids_buffer is not None
+        and input_ids_buffer.shape[0] == input_ids.shape[0]
+        and input_ids_buffer.shape[1] >= next_len
+    ):
+        input_ids_buffer[:, prev_len:next_len].copy_(append_tokens)
+        return input_ids_buffer[:, :next_len]
+    return torch.cat([input_ids, append_tokens], dim=-1)
+
+
 class QJLTokenSketchCache:
     """
     1-bit QJL sidecar cache for token embeddings.
-    Stores sign(S k) and ||k|| per token id for fast approximate scoring.
+
+    This is a token/LM-head branch prior, not the packed KV-cache QJL pre-pass.
+    It stores sign(S e_token) and ||e_token|| per token id for approximate
+    path scoring before exact Medusa verification. A true communication-focused
+    KV-QJL filter should sketch cached attention keys and candidate query states,
+    then score them with packed XNOR-popcount before compacting tree nodes.
     """
 
     def __init__(self, vocab_size, hidden_size, sketch_dim=128, device="cuda"):
@@ -284,7 +313,14 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
     return medusa_buffers
 
 
-def initialize_medusa(input_ids, model, medusa_attn_mask, past_key_values, return_query_state=False):
+def initialize_medusa(
+    input_ids,
+    model,
+    medusa_attn_mask,
+    past_key_values,
+    return_query_state=False,
+    last_token_logits=False,
+):
     """
     Initializes the Medusa structure for a given model.
 
@@ -303,13 +339,73 @@ def initialize_medusa(input_ids, model, medusa_attn_mask, past_key_values, retur
     - logits (torch.Tensor): Original logits from the base model.
     """
     medusa_logits, outputs, logits = model(
-        input_ids, past_key_values=past_key_values, output_orig=True, medusa_forward=True
+        input_ids,
+        past_key_values=past_key_values,
+        output_orig=True,
+        medusa_forward=True,
+        last_token_logits=last_token_logits,
     )
     model.base_model.model.medusa_mask = medusa_attn_mask
     if return_query_state:
         query_state = outputs[0][:, -1, :]
         return medusa_logits, logits, query_state
     return medusa_logits, logits
+
+
+def get_cached_tree_attention_mask(model, medusa_attn_mask, past_len, dtype, device):
+    """
+    Return a reusable 4D attention mask for fixed-shape Medusa tree verification.
+
+    The mask is stored with the tree block pinned at the right edge. Each decode
+    step slices a different zero-prefix length in front of that fixed block, so
+    we avoid rebuilding the causal + tree mask tensor on every verifier call.
+    """
+    if medusa_attn_mask is None:
+        return None
+    if medusa_attn_mask.dim() != 4 or medusa_attn_mask.shape[0] != 1:
+        return None
+
+    past_len = int(past_len)
+    tree_len = int(medusa_attn_mask.shape[-1])
+    if tree_len <= 0 or past_len < 0:
+        return None
+
+    max_past = int(getattr(model, "kv_cache_max_length", past_len + tree_len + 1))
+    max_past = max(max_past, past_len)
+    device = torch.device(device)
+    cache_key = (
+        str(device),
+        str(dtype),
+        int(tree_len),
+        int(max_past),
+        int(medusa_attn_mask.data_ptr()) if medusa_attn_mask.is_cuda else id(medusa_attn_mask),
+    )
+    cached_key = getattr(model, "_turbo_tree_attention_mask_cache_key", None)
+    cached_mask = getattr(model, "_turbo_tree_attention_mask_cache", None)
+    if cached_key != cache_key or cached_mask is None:
+        mask = torch.zeros(
+            (1, 1, tree_len, max_past + tree_len),
+            dtype=dtype,
+            device=device,
+        )
+        min_value = torch.finfo(dtype).min
+        block = torch.full((tree_len, tree_len), min_value, dtype=dtype, device=device)
+        offsets = torch.arange(tree_len, device=device)
+        block.masked_fill_(offsets < (offsets + 1).view(tree_len, 1), 0)
+        tree_mask = medusa_attn_mask[0, 0].to(device=device, dtype=torch.bool)
+        block.masked_fill_(~tree_mask, min_value)
+        mask[:, :, :, max_past : max_past + tree_len].copy_(block)
+        model._turbo_tree_attention_mask_cache_key = cache_key
+        model._turbo_tree_attention_mask_cache = mask
+        cached_mask = mask
+
+    start = max_past - past_len
+    if start < 0:
+        return None
+    # SDPA requires well-aligned attention-bias storage on CUDA. The right-edge
+    # slice avoids rebuilding values, and the contiguous copy gives SDPA an
+    # aligned compact view for the current KV length.
+    return cached_mask[:, :, :, start : max_past + tree_len].contiguous()
 
 
 def reset_medusa_mode(
@@ -524,6 +620,57 @@ def estimate_tree_candidate_scores_1bit(
     # Number of valid predicted tokens excluding root position.
     path_lengths = (retrieve_indices[:, 1:] >= 0).sum(dim=1)
     return approx_scores, path_lengths
+
+
+def packed_kv_qjl_node_scores(query_bits, key_cache, block_k=1024):
+    """
+    Score candidate tree nodes against a packed sign(RK) key sidecar.
+
+    `query_bits`: [nodes, kv_heads, words] int32 packed sign(Rq)
+    `key_cache.qjl_bits`: [batch=1, kv_heads, max_len, words] int32 packed sign(RK)
+
+    The score is an XNOR-popcount proxy. It is intended only for pruning before
+    exact verification; it is not an acceptance oracle.
+    """
+    key_bits = getattr(key_cache, "qjl_bits", None)
+    if key_bits is None or packed_kv_qjl_node_scores_triton is None:
+        return None
+    if query_bits is None or query_bits.dim() != 3:
+        return None
+    if key_bits.dim() != 4 or key_bits.shape[0] != 1:
+        return None
+    kv_len = int(key_cache.current_length.item())
+    if kv_len <= 0:
+        return None
+    return packed_kv_qjl_node_scores_triton(
+        query_bits.contiguous(),
+        key_bits[0].contiguous(),
+        kv_len=kv_len,
+        block_k=block_k,
+    )
+
+
+def estimate_packed_kv_qjl_path_scores(node_scores, retrieve_indices):
+    if node_scores is None or retrieve_indices.numel() == 0:
+        return None, (retrieve_indices[:, 1:] >= 0).sum(dim=1)
+    node_scores = node_scores.to(torch.float32)
+    node_scores_ext = torch.cat(
+        [
+            torch.zeros((1,), device=node_scores.device, dtype=node_scores.dtype),
+            node_scores,
+            torch.zeros((1,), device=node_scores.device, dtype=node_scores.dtype),
+        ],
+        dim=0,
+    )
+    node_indices = retrieve_indices[:, 1:].clone()
+    valid_mask = node_indices >= 0
+    # retrieve_indices are 1-based for tree nodes; convert invalid padding to
+    # the trailing zero score.
+    node_indices[~valid_mask] = node_scores.numel() + 1
+    path_scores = node_scores_ext[node_indices]
+    valid_mask_f = valid_mask.to(path_scores.dtype)
+    path_lens = valid_mask_f.sum(dim=1).clamp_min(1.0)
+    return (path_scores * valid_mask_f).sum(dim=1) / path_lens, valid_mask.sum(dim=1)
 
 
 def _mandatory_top1_path_indices(retrieve_indices, tree_indices, max_paths=2):
@@ -834,6 +981,19 @@ def plan_turbo_pruning(
         ):
             return medusa_path_scores, path_lengths, mandatory_indices, True
 
+        medusa_only_verify_full = should_verify_full_tree(
+            medusa_path_scores,
+            margin_scale=margin_scale,
+        ) or should_skip_pruning_for_low_gain(
+            prescreen_selected_paths,
+            medusa_path_scores.shape[0],
+            min_prune_fraction=min_prune_fraction,
+        )
+        if not medusa_only_verify_full:
+            # If the cheap Medusa prior already gives a confident layout with
+            # enough real node reduction, QJL cannot pay for itself on this step.
+            return medusa_path_scores, path_lengths, prescreen_selected_paths, False
+
     if (
         decisive_margin_scale is not None
         and float(decisive_margin_scale) >= 0.0
@@ -980,6 +1140,109 @@ def plan_turbo_pruning(
         min_node_prune_fraction=min_node_prune_fraction,
     )
     return approx_scores, path_lengths, selected_paths, verify_full_tree
+
+
+def plan_packed_kv_qjl_pruning(
+    medusa_logits,
+    logits,
+    tree_indices,
+    retrieve_indices,
+    kv_qjl_path_scores,
+    candidates=None,
+    keep_fraction=0.30,
+    keep_target=12,
+    min_keep=6,
+    max_keep=15,
+    min_prune_fraction=0.25,
+    min_node_prune_fraction=0.0,
+    node_budget=0,
+    kv_qjl_weight=0.5,
+    medusa_pool_fraction=0.70,
+    medusa_anchor_keep=2,
+):
+    """
+    Select survivor paths using Medusa branch priors plus packed KV-QJL scores.
+
+    This implements the aggressive prefilter architecture: packed sign(RK)
+    scores are used only to compact the tree before exact verification. The
+    final acceptance decision remains the normal high-accuracy verifier.
+    """
+    path_lengths = (retrieve_indices[:, 1:] >= 0).sum(dim=1)
+    if kv_qjl_path_scores is None:
+        return None, path_lengths, None, True
+
+    medusa_path_scores = estimate_medusa_path_scores(
+        medusa_logits,
+        logits,
+        tree_indices,
+        retrieve_indices,
+        candidates=candidates,
+    )
+    kv_qjl_weight = float(max(0.0, min(1.0, kv_qjl_weight)))
+    fused_scores = (
+        (1.0 - kv_qjl_weight) * _normalize_scores(medusa_path_scores)
+        + kv_qjl_weight * _normalize_scores(kv_qjl_path_scores)
+    )
+
+    total_paths = int(fused_scores.shape[0])
+    selection_scores = fused_scores
+    pool_fraction = float(max(0.0, min(1.0, medusa_pool_fraction)))
+    anchor_keep = min(total_paths, max(0, int(medusa_anchor_keep)))
+
+    if 0.0 < pool_fraction < 1.0 and total_paths > 1:
+        pool_keep = int(math.ceil(float(total_paths) * pool_fraction))
+        pool_keep = min(total_paths, max(pool_keep, int(min_keep), int(max_keep), anchor_keep))
+        medusa_pool = torch.topk(medusa_path_scores, k=pool_keep, dim=0).indices
+        mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+        pool_parts = [medusa_pool]
+        if mandatory.numel() > 0:
+            pool_parts.append(mandatory)
+        if anchor_keep > 0:
+            pool_parts.append(torch.topk(medusa_path_scores, k=anchor_keep, dim=0).indices)
+        medusa_pool = torch.unique(torch.cat(pool_parts))
+        pool_mask = torch.zeros(total_paths, dtype=torch.bool, device=fused_scores.device)
+        pool_mask[medusa_pool] = True
+        spread = fused_scores.std(unbiased=False) + 1.0
+        floor = fused_scores.min() - (10.0 * spread)
+        selection_scores = torch.where(pool_mask, fused_scores, floor)
+    else:
+        selection_scores = fused_scores.clone()
+
+    if anchor_keep > 0 and total_paths > 1:
+        anchors = torch.topk(medusa_path_scores, k=anchor_keep, dim=0).indices
+        anchor_boost = selection_scores.max() + torch.arange(
+            anchor_keep,
+            0,
+            -1,
+            device=selection_scores.device,
+            dtype=selection_scores.dtype,
+        )
+        selection_scores[anchors] = anchor_boost
+
+    fraction_keep = max(1, int(math.ceil(float(total_paths) * float(keep_fraction))))
+    keep_target = min(int(keep_target), fraction_keep)
+    max_keep = min(int(max_keep), max(fraction_keep, 1))
+    min_keep = min(int(min_keep), max_keep)
+    selected_paths = select_paths_for_pruning(
+        selection_scores,
+        keep_target=keep_target,
+        min_keep=min_keep,
+        max_keep=max_keep,
+        retrieve_indices=retrieve_indices,
+        tree_indices=tree_indices,
+        node_budget=node_budget,
+    )
+    verify_full_tree = should_skip_pruning_for_low_gain(
+        selected_paths,
+        total_paths,
+        min_prune_fraction=min_prune_fraction,
+    ) or not selected_paths_have_enough_node_gain(
+        retrieve_indices,
+        selected_paths,
+        full_node_count=tree_indices.numel(),
+        min_node_prune_fraction=min_node_prune_fraction,
+    )
+    return selection_scores, path_lengths, selected_paths, verify_full_tree
 
 
 def build_pruned_medusa_buffers(
@@ -1175,6 +1438,8 @@ def tree_decoding(
     medusa_attn_mask=None,
     return_hidden=False,
     gather_paths=True,
+    compute_medusa_logits=True,
+    fast_attention_mask=False,
 ):
     """
     Decode the tree candidates using the provided model and reorganize the logits.
@@ -1195,17 +1460,31 @@ def tree_decoding(
     # Compute new position IDs by adding the Medusa position IDs to the length of the input sequence.
     position_ids = medusa_position_ids + input_ids.shape[1]
 
-    if medusa_attn_mask is not None:
+    attention_mask = None
+    if fast_attention_mask and medusa_attn_mask is not None:
+        attention_mask = get_cached_tree_attention_mask(
+            model,
+            medusa_attn_mask,
+            past_len=input_ids.shape[1],
+            dtype=model.base_model.dtype,
+            device=tree_candidates.device,
+        )
+
+    if medusa_attn_mask is not None and attention_mask is None:
         model.base_model.model.medusa_mask = medusa_attn_mask
+    elif attention_mask is not None:
+        model.base_model.model.medusa_mask = None
 
     # Use the model to decode the tree candidates.
     # The model is expected to return logits for the Medusa structure, original logits, and possibly other outputs.
     tree_medusa_logits, outputs, tree_logits = model(
         tree_candidates,
+        attention_mask=attention_mask,
         output_orig=True,
         past_key_values=past_key_values,
         position_ids=position_ids,
         medusa_forward=True,
+        return_medusa_logits=compute_medusa_logits,
     )
     
     if not gather_paths:
@@ -1215,7 +1494,7 @@ def tree_decoding(
 
     # Reorder the obtained logits based on the retrieve_indices to ensure consistency with some reference ordering.
     logits = tree_logits[0, retrieve_indices]
-    medusa_logits = tree_medusa_logits[:, 0, retrieve_indices]
+    medusa_logits = None if tree_medusa_logits is None else tree_medusa_logits[:, 0, retrieve_indices]
     if return_hidden:
         hidden_paths = outputs[0][0, retrieve_indices]
         return medusa_logits, logits, outputs, hidden_paths
@@ -1495,6 +1774,7 @@ def update_inference_inputs(
     past_key_values_data,
     current_length_data,
     past_key_values=None,
+    input_ids_buffer=None,
 ):
     """
     Update the input sequences and relevant tensors based on the selected best candidate from the inference results.
@@ -1523,9 +1803,10 @@ def update_inference_inputs(
     select_indices = (
         retrieve_indices[best_candidate, : accept_len_int + 1] + prev_input_len
     )
-    # Append the tokens from the best candidate to the input sequence
-    input_ids = torch.cat(
-        [input_ids, candidates[None, best_candidate, : accept_len_int + 1]], dim=-1
+    input_ids = append_input_ids(
+        input_ids,
+        candidates[None, best_candidate, : accept_len_int + 1],
+        input_ids_buffer=input_ids_buffer,
     )
     # Update the past key values based on the selected tokens.
     if accept_len_int == 0:
@@ -1588,6 +1869,7 @@ def update_inference_inputs_from_tree(
     past_key_values_data,
     current_length_data,
     past_key_values=None,
+    input_ids_buffer=None,
 ):
     """
     Update inference state using raw tree-node logits instead of gathered path logits.
@@ -1597,8 +1879,10 @@ def update_inference_inputs_from_tree(
     select_indices = (
         retrieve_indices[best_candidate, : accept_len_int + 1] + prev_input_len
     )
-    input_ids = torch.cat(
-        [input_ids, candidates[None, best_candidate, : accept_len_int + 1]], dim=-1
+    input_ids = append_input_ids(
+        input_ids,
+        candidates[None, best_candidate, : accept_len_int + 1],
+        input_ids_buffer=input_ids_buffer,
     )
 
     if accept_len_int == 0:
@@ -1633,7 +1917,7 @@ def update_inference_inputs_from_tree(
 
     node_idx = retrieve_indices[best_candidate, accept_len_int].reshape(1)
     logits = tree_logits.index_select(1, node_idx)
-    medusa_logits = tree_medusa_logits.index_select(2, node_idx)
+    medusa_logits = None if tree_medusa_logits is None else tree_medusa_logits.index_select(2, node_idx)
     new_token += accept_len_int + 1
 
     return input_ids, logits, medusa_logits, new_token
