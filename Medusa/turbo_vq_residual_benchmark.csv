@@ -1,0 +1,7 @@
+prompt,mode,tokens,total_s,tps,prefix_vs_medusa,peak_alloc_mb,notes
+cuda_reduction,medusa_base,85,1.0164,83.63,1.0000,2851.2,baseline Medusa tree decode
+cuda_reduction,b4_res0_fulltree,83,2.3980,34.61,0.0545,2834.6,TurboVQ strict compressed KV no residual full-tree gate
+cuda_reduction,b4_res128_fulltree,83,1.6329,50.83,0.1818,2838.1,TurboVQ strict compressed KV packed residual-QJL m=128 full-tree gate
+cuda_reduction,b8_res0_fulltree,79,3.0573,25.84,0.6415,2835.0,TurboVQ strict compressed KV no residual full-tree gate
+cuda_reduction,b8_res128_fulltree,85,1.6527,51.43,0.7143,2838.1,TurboVQ strict compressed KV packed residual-QJL m=128 full-tree gate
+cuda_reduction,b8_res256_fulltree,85,1.6010,53.09,0.7143,2840.9,TurboVQ strict compressed KV packed residual-QJL m=256 full-tree gate

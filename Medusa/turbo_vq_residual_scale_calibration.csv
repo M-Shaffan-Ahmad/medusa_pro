@@ -1,0 +1,18 @@
+kind,head_dim,residual_scale,score_mse,attn_rel,base_attn_rel,avg_prefix,min_prefix,avg_tps,notes
+synthetic,64,0.00,0.009453,0.013995,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,64,0.25,0.005476,0.010703,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,64,0.50,0.003012,0.007848,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,64,0.75,0.002061,0.006053,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,64,1.00,0.002624,0.006351,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,64,1.25,0.004700,0.008513,0.013984,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,0.00,0.021262,0.014339,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,0.25,0.012750,0.011209,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,0.50,0.008337,0.008955,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,0.75,0.008023,0.008446,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,1.00,0.011809,0.009879,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+synthetic,128,1.25,0.019694,0.012619,0.014346,,,,random KV q_len=16 kv_len=256 bits=8
+generation,64,0.50,,,,,0.6712,0.3721,20.90,three-prompt prefix sweep; TPS includes per-scale Triton compile
+generation,64,0.75,,,,,0.7668,0.6415,39.22,three-prompt prefix sweep; TPS includes per-scale Triton compile
+generation,64,1.00,,,,,1.0000,1.0000,20.30,three-prompt prefix sweep; TPS includes per-scale Triton compile
+generation_warmed,64,0.75,,,,,0.6415,0.6415,55.85,warmed one-prompt timing
+generation_warmed,64,1.00,,,,,1.0000,1.0000,60.59,warmed one-prompt timing

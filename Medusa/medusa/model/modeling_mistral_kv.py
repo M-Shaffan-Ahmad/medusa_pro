@@ -26,6 +26,17 @@ from transformers.utils import (
 )
 from transformers.models.mistral.configuration_mistral import MistralConfig
 
+from .kv_cache import turbo_vq_attention_with_qjl_residual
+
+try:
+    from .triton_kernels import (
+        compressed_kv_attention_polar_triton,
+        compressed_kv_attention_turbo_vq_triton,
+    )
+except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
+    compressed_kv_attention_polar_triton = None
+    compressed_kv_attention_turbo_vq_triton = None
+
 
 if is_flash_attn_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -258,18 +269,67 @@ class MistralAttention(nn.Module):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        # [MODIFIED] Using KVCache mechanism for preallocated GPU memory optimization
-        # past_key_value is utilized to leverage previously computed key and value states.
-        # If past_key_value is available, reuse the states for k, v, and self_attention.
+        attn_output = None
+        attn_weights = None
+
+        # [MODIFIED] Using KVCache mechanism for preallocated GPU memory optimization.
+        # In strict compressed-cache mode, keep K/V compressed and let the Triton
+        # attention kernel decode only the elements it consumes.
         if past_key_value is not None:
-            key_states = past_key_value[0].cat(key_states, dim=2)
-            value_states = past_key_value[1].cat(value_states, dim=2)
+            key_cache, value_cache = past_key_value
+            use_direct_compressed_kv = (
+                not output_attentions
+                and hasattr(key_cache, "append_compressed")
+                and hasattr(value_cache, "append_compressed")
+                and getattr(key_cache, "dequant_data", None) is None
+                and getattr(value_cache, "dequant_data", None) is None
+            )
+            if use_direct_compressed_kv:
+                _, cache_len = key_cache.append_compressed(key_states, dim=2)
+                value_cache.append_compressed(value_states, dim=2)
+                if compressed_kv_attention_turbo_vq_triton is not None:
+                    attn_output = compressed_kv_attention_turbo_vq_triton(
+                        query_states,
+                        key_cache,
+                        value_cache,
+                        attention_mask,
+                        self.num_key_value_groups,
+                        1.0 / math.sqrt(self.head_dim),
+                    )
+                if attn_output is None:
+                    attn_output = turbo_vq_attention_with_qjl_residual(
+                        query_states,
+                        key_cache,
+                        value_cache,
+                        attention_mask,
+                        self.num_key_value_groups,
+                        self.head_dim,
+                    )
+                if attn_output is None:
+                    if compressed_kv_attention_polar_triton is not None:
+                        attn_output = compressed_kv_attention_polar_triton(
+                            query_states,
+                            key_cache,
+                            value_cache,
+                            attention_mask,
+                            self.num_key_value_groups,
+                            1.0 / math.sqrt(self.head_dim),
+                        )
+                if attn_output is None:
+                    # Shape unsupported by the custom kernel: decode the already
+                    # appended compressed cache once and continue through SDPA.
+                    key_states = key_cache._decode_range(0, cache_len)
+                    value_states = value_cache._decode_range(0, cache_len)
+            else:
+                key_states = key_cache.cat(key_states, dim=2)
+                value_states = value_cache.cat(value_states, dim=2)
         # Reset past_key_value to avoid return past_key_value.
         past_key_value = None
 
         # repeat k/v heads if n_kv_heads < n_heads
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
+        if attn_output is None:
+            key_states = repeat_kv(key_states, self.num_key_value_groups)
+            value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
@@ -277,7 +337,9 @@ class MistralAttention(nn.Module):
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
 
-        if not output_attentions:
+        if attn_output is not None:
+            attn_weights = None
+        elif not output_attentions:
             # Fuses scale + mask + softmax + AV into SDPA/Flash-style kernels when
             # available, while still supporting Medusa's arbitrary tree mask.
             attn_output = F.scaled_dot_product_attention(

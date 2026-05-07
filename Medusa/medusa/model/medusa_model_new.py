@@ -366,8 +366,13 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_skip_threshold_high=1.1,
         turbo_skip_threshold_low=-0.1,
         turbo_kv_max_length=2048,
+        turbo_kv_quant_mode="polar",
         turbo_radius_bits=8,
         turbo_theta_bits=8,
+        turbo_vq_bits=4,
+        turbo_vq_key_bits=None,
+        turbo_vq_residual_dim=128,
+        turbo_vq_residual_scale=1.0,
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
         turbo_qjl_dim=128,
@@ -384,7 +389,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             sampling (str, optional): Defines the sampling strategy ('typical' or 'nucleus'). Defaults to 'typical'.
             fast (bool, optional): If True, enables faster, deterministic decoding for typical sampling.
             turbo_quant (bool, optional): Enable TurboQuant two-pass pruning.
-            turbo_kv_compression (bool, optional): Enable polar KV compression for attention cache.
+            turbo_kv_compression (bool, optional): Enable compressed KV cache.
             turbo_prune_keep (int, optional): Target number of candidate paths kept for high-accuracy verification.
             turbo_prune_min (int, optional): Minimum number of paths to keep.
             turbo_prune_max (int, optional): Maximum number of paths to keep.
@@ -398,10 +403,23 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             turbo_skip_threshold_high (float, optional): If pass-1 top prob exceeds this, skip pass-2 and accept one token.
             turbo_skip_threshold_low (float, optional): If pass-1 top prob is below this, skip pass-2 and do greedy one token.
             turbo_kv_max_length (int, optional): Maximum cache length for KV pre-allocation.
+            turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for the
+                previous polar-inspired cache or "turbo_vq" for random-rotation Lloyd-Max
+                TurboQuant MSE-stage vector quantization.
             turbo_radius_bits (int, optional): Radius quantization bits for polar KV.
             turbo_theta_bits (int, optional): Angle quantization bits for polar KV.
+            turbo_vq_bits (int, optional): Scalar Lloyd-Max bits for "turbo_vq" KV compression.
+            turbo_vq_key_bits (int, optional): Override key-cache Lloyd-Max bits. Set this
+                to `turbo_vq_bits - 1` to test the TurboQuant inner-product bit-budget
+                variant while keeping value-cache quantization at `turbo_vq_bits`.
+            turbo_vq_residual_dim (int, optional): 1-bit QJL residual sketch dimension for
+                TurboQuant key-cache inner-product correction. Set 0 to disable.
+            turbo_vq_residual_scale (float, optional): Multiplier for the residual-QJL
+                correction. `1.0` is the unbiased estimator; lower values can dampen
+                sketch variance during calibration.
             turbo_runtime_dequant_cache (bool, optional): Keep an incremental dequantized shadow cache
-                for fast attention when polar compression is enabled.
+                for fast attention when polar compression is enabled. Set False to use the
+                direct compressed-KV Triton attention path instead of materializing FP16 K/V.
             turbo_compile_decode (bool, optional): Use torch.compile on tensorized polar decode kernel.
             turbo_qjl_dim (int, optional): Sketch dimension for 1-bit QJL sidecar path scoring.
         Returns:
@@ -424,22 +442,39 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             )
         self.medusa_buffers = medusa_buffers
         self.medusa_choices = medusa_choices
+        medusa_choices_key = (str(self.base_model.device), tuple(tuple(path) for path in medusa_choices))
+        if (
+            not hasattr(self, "turbo_pruned_layout_cache")
+            or getattr(self, "turbo_pruned_layout_cache_key", None) != medusa_choices_key
+        ):
+            self.turbo_pruned_layout_cache = {}
+            self.turbo_pruned_layout_cache_key = medusa_choices_key
 
         max_path_depth = max((len(path) for path in medusa_choices), default=1)
         worst_case_new_tokens = int(max_steps * (max_path_depth + 1))
         required_kv_len = int(input_ids.shape[1] + worst_case_new_tokens + 8)
         effective_kv_max_length = max(int(turbo_kv_max_length), required_kv_len)
-        use_polar_kv = bool(turbo_quant and turbo_kv_compression)
-        requested_cache_mode = "polar" if use_polar_kv else "fp16"
+        use_compressed_kv = bool(turbo_quant and turbo_kv_compression)
+        requested_kv_quant_mode = str(turbo_kv_quant_mode).lower()
+        requested_cache_mode = requested_kv_quant_mode if use_compressed_kv else "fp16"
+        effective_turbo_vq_key_bits = (
+            int(turbo_vq_bits)
+            if turbo_vq_key_bits is None
+            else int(turbo_vq_key_bits)
+        )
         cache_reusable = (
             hasattr(self, "past_key_values")
             and getattr(self, "kv_cache_mode", None) == requested_cache_mode
             and getattr(self, "kv_cache_max_length", None) == effective_kv_max_length
             and (
-                not use_polar_kv
+                not use_compressed_kv
                 or (
                     getattr(self, "kv_cache_radius_bits", None) == turbo_radius_bits
                     and getattr(self, "kv_cache_theta_bits", None) == turbo_theta_bits
+                    and getattr(self, "kv_cache_vq_bits", None) == turbo_vq_bits
+                    and getattr(self, "kv_cache_vq_key_bits", None) == effective_turbo_vq_key_bits
+                    and getattr(self, "kv_cache_vq_residual_dim", None) == turbo_vq_residual_dim
+                    and getattr(self, "kv_cache_vq_residual_scale", None) == float(turbo_vq_residual_scale)
                     and getattr(self, "kv_runtime_dequant_cache", None) == turbo_runtime_dequant_cache
                     and getattr(self, "kv_compile_decode", None) == turbo_compile_decode
                 )
@@ -461,9 +496,14 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             ) = initialize_past_key_values(
                 self.base_model,
                 safe_max_length=effective_kv_max_length,
-                turbo_quant=use_polar_kv,
+                turbo_quant=use_compressed_kv,
+                turbo_kv_quant_mode=requested_kv_quant_mode,
                 turbo_radius_bits=turbo_radius_bits,
                 turbo_theta_bits=turbo_theta_bits,
+                turbo_vq_bits=turbo_vq_bits,
+                turbo_vq_key_bits=effective_turbo_vq_key_bits,
+                turbo_vq_residual_dim=turbo_vq_residual_dim,
+                turbo_vq_residual_scale=turbo_vq_residual_scale,
                 turbo_runtime_dequant_cache=turbo_runtime_dequant_cache,
                 turbo_compile_decode=turbo_compile_decode,
             )
@@ -474,11 +514,16 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             self.kv_cache_max_length = effective_kv_max_length
             self.kv_cache_radius_bits = turbo_radius_bits
             self.kv_cache_theta_bits = turbo_theta_bits
+            self.kv_cache_vq_bits = turbo_vq_bits
+            self.kv_cache_vq_key_bits = effective_turbo_vq_key_bits
+            self.kv_cache_vq_residual_dim = turbo_vq_residual_dim
+            self.kv_cache_vq_residual_scale = float(turbo_vq_residual_scale)
             self.kv_runtime_dequant_cache = turbo_runtime_dequant_cache
             self.kv_compile_decode = turbo_compile_decode
 
         input_len = input_ids.shape[1]
         full_path_lengths = (medusa_buffers["retrieve_indices"][:, 1:] >= 0).sum(dim=1)
+        turbo_pruned_layout_cache = self.turbo_pruned_layout_cache if turbo_quant else None
         embed_weight = None
         qjl_scorer = None
         if turbo_quant:
@@ -536,7 +581,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             )
 
             if turbo_quant:
-                approx_scores, _ = estimate_tree_candidate_scores_1bit(
+                approx_scores, _, selected_paths, verify_full_tree = plan_turbo_pruning(
                     medusa_logits,
                     logits,
                     medusa_buffers["tree_indices"],
@@ -545,14 +590,10 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     query_state=query_state,
                     qjl_scorer=qjl_scorer,
                     embed_weight=embed_weight,
-                )
-                selected_paths = select_topk_paths_for_verification(
-                    approx_scores,
                     keep_target=turbo_prune_keep,
                     min_keep=turbo_prune_min,
                     max_keep=turbo_prune_max,
-                    retrieve_indices=medusa_buffers["retrieve_indices"],
-                    tree_indices=medusa_buffers["tree_indices"],
+                    margin_scale=turbo_prune_confidence_margin,
                 )
                 use_skip_gating = (
                     (0.0 <= turbo_skip_threshold_high <= 1.0)
@@ -597,10 +638,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                         break
                     continue
 
-                verify_full_tree = should_verify_full_tree(
-                    approx_scores,
-                    margin_scale=turbo_prune_confidence_margin,
-                )
                 if verify_full_tree:
                     medusa_logits, logits, outputs, tree_hidden = tree_decoding(
                         self,
@@ -626,12 +663,13 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     update_candidates = candidates
                     update_retrieve_indices = medusa_buffers["retrieve_indices"]
                 else:
-                    pruned = build_pruned_medusa_buffers(
+                    pruned = build_cached_pruned_medusa_buffers(
                         tree_candidates,
                         medusa_buffers["retrieve_indices"],
                         medusa_buffers["medusa_position_ids"],
                         medusa_buffers["medusa_attn_mask"],
                         selected_paths,
+                        layout_cache=turbo_pruned_layout_cache,
                     )
 
                     medusa_logits, logits, outputs, tree_hidden = tree_decoding(

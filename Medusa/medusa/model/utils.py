@@ -6,10 +6,12 @@ try:
     from .triton_kernels import (
         materialize_pruned_medusa_triton,
         qjl_path_scores_triton,
+        turbo_qjl_select_paths_triton,
     )
 except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
     materialize_pruned_medusa_triton = None
     qjl_path_scores_triton = None
+    turbo_qjl_select_paths_triton = None
 
 TOPK=10 # topk for sparse tree (10 is a placeholder and it is sufficient)
 
@@ -590,6 +592,114 @@ def should_verify_full_tree(approx_scores, margin_scale=0.25):
     return score_std <= 1e-6 or margin < float(margin_scale) * score_std
 
 
+def plan_turbo_pruning(
+    medusa_logits,
+    logits,
+    tree_indices,
+    retrieve_indices,
+    candidates=None,
+    query_state=None,
+    qjl_scorer=None,
+    embed_weight=None,
+    keep_target=12,
+    min_keep=10,
+    max_keep=15,
+    margin_scale=0.25,
+    mandatory_indices=None,
+):
+    """
+    Compute Turbo pass-1 scores, selected paths, and full-tree confidence gate.
+
+    CUDA/Triton fast path fuses QJL scoring, score normalization/fusion, top-k
+    selection, and confidence gating. CPU or unsupported shapes fall back to the
+    reference PyTorch implementation above.
+    """
+    path_lengths = (retrieve_indices[:, 1:] >= 0).sum(dim=1)
+    medusa_path_scores = estimate_medusa_path_scores(
+        medusa_logits,
+        logits,
+        tree_indices,
+        retrieve_indices,
+        candidates=candidates,
+    )
+
+    qjl_valid_mask = retrieve_indices >= 0
+    if qjl_valid_mask.shape[1] > 0:
+        qjl_valid_mask = qjl_valid_mask.clone()
+        qjl_valid_mask[:, 0] = False
+
+    if mandatory_indices is None:
+        mandatory_indices = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+
+    if (
+        turbo_qjl_select_paths_triton is not None
+        and qjl_scorer is not None
+        and query_state is not None
+        and candidates is not None
+        and embed_weight is not None
+    ):
+        if query_state.dim() == 2:
+            q = query_state[0]
+        else:
+            q = query_state
+        q = q.to(torch.float32)
+        q_proj = q @ qjl_scorer.proj
+
+        safe_candidates = candidates.clamp(0, qjl_scorer.vocab_size - 1)
+        qjl_scorer._cache_token_sketches(safe_candidates[qjl_valid_mask], embed_weight)
+        fast_plan = turbo_qjl_select_paths_triton(
+            q_proj.reshape(-1),
+            qjl_scorer.sign_cache,
+            qjl_scorer.norm_cache,
+            safe_candidates,
+            qjl_valid_mask,
+            medusa_path_scores,
+            mandatory_indices,
+            qjl_scorer.coeff,
+            qjl_scorer.sketch_dim,
+            keep_target,
+            min_keep,
+            max_keep,
+            margin_scale,
+        )
+        if fast_plan is not None:
+            approx_scores, selected_paths, verify_full_tree = fast_plan
+            return approx_scores, path_lengths, selected_paths, verify_full_tree
+
+    if (
+        qjl_scorer is not None
+        and query_state is not None
+        and candidates is not None
+        and embed_weight is not None
+    ):
+        qjl_path_scores = qjl_scorer.score_paths(
+            query_state=query_state,
+            candidates=candidates,
+            valid_mask=qjl_valid_mask,
+            embed_weight=embed_weight,
+        )
+        approx_scores = (
+            0.75 * _normalize_scores(medusa_path_scores)
+            + 0.25 * _normalize_scores(qjl_path_scores)
+        )
+    else:
+        approx_scores = medusa_path_scores
+
+    selected_paths = select_topk_paths_for_verification(
+        approx_scores,
+        keep_target=keep_target,
+        min_keep=min_keep,
+        max_keep=max_keep,
+        retrieve_indices=retrieve_indices,
+        tree_indices=tree_indices,
+    )
+    verify_full_tree = should_verify_full_tree(
+        approx_scores,
+        margin_scale=margin_scale,
+    )
+    return approx_scores, path_lengths, selected_paths, verify_full_tree
+
+
 def build_pruned_medusa_buffers(
     full_tree_candidates,
     full_retrieve_indices,
@@ -606,6 +716,45 @@ def build_pruned_medusa_buffers(
         full_medusa_attn_mask,
         selected_path_indices,
     )
+    return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
+
+
+def build_cached_pruned_medusa_buffers(
+    full_tree_candidates,
+    full_retrieve_indices,
+    full_medusa_position_ids,
+    full_medusa_attn_mask,
+    selected_path_indices,
+    layout_cache=None,
+    max_cache_size=128,
+):
+    """
+    Build/materialize pruned buffers while reusing selected-path layouts.
+
+    Token values change every step, but the pruned tree layout depends only on
+    selected path ids. Caching avoids repeatedly rebuilding masks and remaps.
+    """
+    if layout_cache is None:
+        return build_pruned_medusa_buffers(
+            full_tree_candidates,
+            full_retrieve_indices,
+            full_medusa_position_ids,
+            full_medusa_attn_mask,
+            selected_path_indices,
+        )
+
+    key = tuple(int(x) for x in selected_path_indices.detach().cpu().tolist())
+    layout = layout_cache.get(key)
+    if layout is None:
+        layout = build_pruned_medusa_layout(
+            full_retrieve_indices,
+            full_medusa_position_ids,
+            full_medusa_attn_mask,
+            selected_path_indices,
+        )
+        if len(layout_cache) >= int(max_cache_size):
+            layout_cache.pop(next(iter(layout_cache)))
+        layout_cache[key] = layout
     return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
 
 

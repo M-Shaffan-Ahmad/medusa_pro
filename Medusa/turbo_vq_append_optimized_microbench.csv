@@ -1,0 +1,22 @@
+num_heads,head_dim,q_len,kv_len,residual_dim,mode,component,gpu_us,wall_us,rel_l2_vs_pytorch_append,notes
+8,64,1,256,128,fused_append,key_append_quantize,26.83,26.52,0.000124,append q_len=1; key has residual QJL sketch
+8,64,1,256,0,fused_append,value_append_quantize,19.43,19.47,0.000124,append q_len=1; value has no residual sketch
+8,64,1,256,128,fused_append,steady_decode_append_plus_attention,85.46,85.26,0.000124,strict compressed KV: append K/V then fused TurboVQ attention
+8,64,1,256,128,pytorch_append_fallback,key_append_quantize,216.42,216.36,0.000124,append q_len=1; key has residual QJL sketch
+8,64,1,256,0,pytorch_append_fallback,value_append_quantize,76.14,76.09,0.000124,append q_len=1; value has no residual sketch
+8,64,1,256,128,pytorch_append_fallback,steady_decode_append_plus_attention,359.16,365.38,0.000124,strict compressed KV: append K/V then fused TurboVQ attention
+8,64,1,257,128,fused_attention_reused_output,attention_only,31.58,32.30,0.000124,wrapper reuses key-cache output buffer and accepts query strides
+8,128,1,256,128,fused_append,key_append_quantize,27.16,32.22,0.000199,append q_len=1; key has residual QJL sketch
+8,128,1,256,0,fused_append,value_append_quantize,20.66,19.63,0.000199,append q_len=1; value has no residual sketch
+8,128,1,256,128,fused_append,steady_decode_append_plus_attention,86.89,86.52,0.000199,strict compressed KV: append K/V then fused TurboVQ attention
+8,128,1,256,128,pytorch_append_fallback,key_append_quantize,217.95,232.97,0.000199,append q_len=1; key has residual QJL sketch
+8,128,1,256,0,pytorch_append_fallback,value_append_quantize,79.94,77.58,0.000199,append q_len=1; value has no residual sketch
+8,128,1,256,128,pytorch_append_fallback,steady_decode_append_plus_attention,360.64,360.79,0.000199,strict compressed KV: append K/V then fused TurboVQ attention
+8,128,1,257,128,fused_attention_reused_output,attention_only,48.48,48.54,0.000199,wrapper reuses key-cache output buffer and accepts query strides
+32,128,1,512,128,fused_append,key_append_quantize,27.12,27.35,0.000167,append q_len=1; key has residual QJL sketch
+32,128,1,512,0,fused_append,value_append_quantize,24.04,25.79,0.000167,append q_len=1; value has no residual sketch
+32,128,1,512,128,fused_append,steady_decode_append_plus_attention,163.33,163.54,0.000167,strict compressed KV: append K/V then fused TurboVQ attention
+32,128,1,512,128,pytorch_append_fallback,key_append_quantize,224.72,223.55,0.000167,append q_len=1; key has residual QJL sketch
+32,128,1,512,0,pytorch_append_fallback,value_append_quantize,78.60,78.55,0.000167,append q_len=1; value has no residual sketch
+32,128,1,512,128,pytorch_append_fallback,steady_decode_append_plus_attention,381.47,370.87,0.000167,strict compressed KV: append K/V then fused TurboVQ attention
+32,128,1,513,128,fused_attention_reused_output,attention_only,128.03,128.28,0.000167,wrapper reuses key-cache output buffer and accepts query strides
