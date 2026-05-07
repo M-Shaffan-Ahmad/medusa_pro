@@ -114,7 +114,14 @@ def build_modes(args):
                 "turbo_prune_keep": args.prune_keep,
                 "turbo_prune_min": args.prune_min,
                 "turbo_prune_max": args.prune_max,
+                "turbo_prune_confidence_margin": args.prune_confidence_margin,
+                "turbo_prune_prescreen_margin": args.prune_prescreen_margin,
+                "turbo_prune_min_fraction": args.prune_min_fraction,
+                "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
+                "turbo_prune_decisive_margin": args.prune_decisive_margin,
+                "turbo_prune_decisive_keep": args.prune_decisive_keep,
                 "turbo_prune_use_qjl": True,
+                "turbo_qjl_dim": args.qjl_dim,
             },
         ),
         (
@@ -124,17 +131,24 @@ def build_modes(args):
                 "turbo_kv_compression": False,
                 "turbo_prune_use_kv_qjl": True,
                 "turbo_prune_use_qjl": False,
-                "turbo_kv_qjl_dim": 128,
+                "turbo_kv_qjl_dim": args.kv_qjl_dim,
                 "turbo_kv_qjl_layer": args.kv_qjl_layer,
                 "turbo_kv_qjl_keep_fraction": args.kv_qjl_keep_fraction,
                 "turbo_kv_qjl_weight": args.kv_qjl_weight,
                 "turbo_kv_qjl_min_kv_len": args.kv_qjl_min_kv_len,
                 "turbo_kv_qjl_medusa_pool_fraction": args.kv_qjl_medusa_pool_fraction,
                 "turbo_kv_qjl_medusa_anchor_keep": args.kv_qjl_medusa_anchor_keep,
+                "turbo_packed_kv_qjl_auto_disable_after": args.kv_qjl_auto_disable_after,
                 "turbo_prune_node_budget": args.node_budget,
                 "turbo_prune_keep": args.prune_keep,
                 "turbo_prune_min": args.prune_min,
                 "turbo_prune_max": args.prune_max,
+                "turbo_prune_confidence_margin": args.prune_confidence_margin,
+                "turbo_prune_prescreen_margin": args.prune_prescreen_margin,
+                "turbo_prune_min_fraction": args.prune_min_fraction,
+                "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
+                "turbo_prune_decisive_margin": args.prune_decisive_margin,
+                "turbo_prune_decisive_keep": args.prune_decisive_keep,
             },
         ),
         (
@@ -145,17 +159,24 @@ def build_modes(args):
                 "turbo_prune_use_kv_qjl": True,
                 "turbo_prune_use_qjl": False,
                 "turbo_fallback_full_tree": False,
-                "turbo_kv_qjl_dim": 128,
+                "turbo_kv_qjl_dim": args.kv_qjl_dim,
                 "turbo_kv_qjl_layer": args.kv_qjl_layer,
                 "turbo_kv_qjl_keep_fraction": args.kv_qjl_keep_fraction,
                 "turbo_kv_qjl_weight": args.kv_qjl_weight,
                 "turbo_kv_qjl_min_kv_len": args.kv_qjl_min_kv_len,
                 "turbo_kv_qjl_medusa_pool_fraction": args.kv_qjl_medusa_pool_fraction,
                 "turbo_kv_qjl_medusa_anchor_keep": args.kv_qjl_medusa_anchor_keep,
+                "turbo_packed_kv_qjl_auto_disable_after": args.kv_qjl_auto_disable_after,
                 "turbo_prune_node_budget": args.node_budget,
                 "turbo_prune_keep": args.prune_keep,
                 "turbo_prune_min": args.prune_min,
                 "turbo_prune_max": args.prune_max,
+                "turbo_prune_confidence_margin": args.prune_confidence_margin,
+                "turbo_prune_prescreen_margin": args.prune_prescreen_margin,
+                "turbo_prune_min_fraction": args.prune_min_fraction,
+                "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
+                "turbo_prune_decisive_margin": args.prune_decisive_margin,
+                "turbo_prune_decisive_keep": args.prune_decisive_keep,
             },
         ),
         (
@@ -209,7 +230,14 @@ def build_modes(args):
                 "turbo_prune_keep": args.prune_keep,
                 "turbo_prune_min": args.prune_min,
                 "turbo_prune_max": args.prune_max,
+                "turbo_prune_confidence_margin": args.prune_confidence_margin,
+                "turbo_prune_prescreen_margin": args.prune_prescreen_margin,
+                "turbo_prune_min_fraction": args.prune_min_fraction,
+                "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
+                "turbo_prune_decisive_margin": args.prune_decisive_margin,
+                "turbo_prune_decisive_keep": args.prune_decisive_keep,
                 "turbo_prune_use_qjl": True,
+                "turbo_qjl_dim": args.qjl_dim,
             },
         ),
     ]
@@ -304,17 +332,26 @@ def main():
     parser.add_argument("--long-repeat", type=int, default=0)
     parser.add_argument("--long-only", action="store_true")
     parser.add_argument("--hot-window", type=int, default=512)
-    parser.add_argument("--node-budget", type=int, default=32)
-    parser.add_argument("--prune-keep", type=int, default=12)
-    parser.add_argument("--prune-min", type=int, default=10)
-    parser.add_argument("--prune-max", type=int, default=15)
+    parser.add_argument("--node-budget", type=int, default=40)
+    parser.add_argument("--prune-keep", type=int, default=16)
+    parser.add_argument("--prune-min", type=int, default=12)
+    parser.add_argument("--prune-max", type=int, default=24)
+    parser.add_argument("--prune-confidence-margin", type=float, default=0.50)
+    parser.add_argument("--prune-prescreen-margin", type=float, default=-1.0)
+    parser.add_argument("--prune-min-fraction", type=float, default=0.0)
+    parser.add_argument("--prune-min-node-fraction", type=float, default=0.15)
+    parser.add_argument("--prune-decisive-margin", type=float, default=1.5)
+    parser.add_argument("--prune-decisive-keep", type=int, default=8)
+    parser.add_argument("--qjl-dim", type=int, default=64)
     parser.add_argument("--residual-dim", type=int, default=128)
+    parser.add_argument("--kv-qjl-dim", type=int, default=128)
     parser.add_argument("--kv-qjl-layer", type=int, default=-1)
-    parser.add_argument("--kv-qjl-keep-fraction", type=float, default=0.30)
-    parser.add_argument("--kv-qjl-weight", type=float, default=0.5)
+    parser.add_argument("--kv-qjl-keep-fraction", type=float, default=0.55)
+    parser.add_argument("--kv-qjl-weight", type=float, default=0.05)
     parser.add_argument("--kv-qjl-min-kv-len", type=int, default=16384)
-    parser.add_argument("--kv-qjl-medusa-pool-fraction", type=float, default=0.70)
+    parser.add_argument("--kv-qjl-medusa-pool-fraction", type=float, default=0.80)
     parser.add_argument("--kv-qjl-medusa-anchor-keep", type=int, default=2)
+    parser.add_argument("--kv-qjl-auto-disable-after", type=int, default=2)
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--stream", action="store_true")
     parser.add_argument("--no-stats", dest="collect_stats", action="store_false")

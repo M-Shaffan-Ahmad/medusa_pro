@@ -27,7 +27,7 @@ class MedusaConfig(PretrainedConfig):
     Configuration class for Medusa model.
 
     Args:
-        medusa_num_heads (int, optional): Number of heads for the Medusa layer. Default is 2.
+        medusa_num_heads (int, optional): Number of heads for the Medusa layer. Default is 5.
         medusa_num_layers (int, optional): Number of Medusa layers. Default is 1.
         base_model_name_or_path (str, optional): The name or path of the base model. Default is "lmsys/vicuna-7b-v1.3".
         **kwargs: Additional keyword arguments to be passed to the parent class constructor.
@@ -129,6 +129,29 @@ def _infer_medusa_num_heads_from_state_dict(state_dict, fallback):
     if not head_ids:
         return int(fallback)
     return max(head_ids) + 1
+
+
+def _medusa_head_module_state_dict(state_dict):
+    if any(str(key).startswith("medusa_head.") for key in state_dict.keys()):
+        prefix_len = len("medusa_head.")
+        return {
+            str(key)[prefix_len:]: value
+            for key, value in state_dict.items()
+            if str(key).startswith("medusa_head.")
+        }
+    return state_dict
+
+
+def _load_medusa_head_into_model(model, state_dict):
+    module_state_dict = _medusa_head_module_state_dict(state_dict)
+    incompatible = model.medusa_head.load_state_dict(module_state_dict, strict=False)
+    if incompatible.missing_keys or incompatible.unexpected_keys:
+        warnings.warn(
+            "Medusa head sidecar did not load cleanly: "
+            f"missing={incompatible.missing_keys}, unexpected={incompatible.unexpected_keys}",
+            RuntimeWarning,
+        )
+    return incompatible
 
 
 def _compute_medusa_logits(model, hidden_states):
@@ -276,12 +299,24 @@ class MedusaModelABC(nn.Module):
         # Manually load config to ensure that the medusa_num_heads parameter is loaded
         try:
             config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
-            return super().from_pretrained(
+            medusa_head_state_dict = None
+            try:
+                medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
+                config.medusa_num_heads = _infer_medusa_num_heads_from_state_dict(
+                    medusa_head_state_dict,
+                    getattr(config, "medusa_num_heads", 5),
+                )
+            except Exception:
+                pass
+            model = super().from_pretrained(
                 pretrained_model_name_or_path,
                 *args,
                 **kwargs,
                 config=config,
             )
+            if medusa_head_state_dict is not None:
+                _load_medusa_head_into_model(model, medusa_head_state_dict)
+            return model
         except:
             config = MedusaConfig.from_pretrained(pretrained_model_name_or_path)
             medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
@@ -299,7 +334,7 @@ class MedusaModelABC(nn.Module):
                 **kwargs,
                 config=base_model_config,
             )
-            model.medusa_head.load_state_dict(medusa_head_state_dict, strict=False)
+            _load_medusa_head_into_model(model, medusa_head_state_dict)
             return model
         
 
@@ -394,16 +429,16 @@ class MedusaModelABC(nn.Module):
         fast = True,
         turbo_quant=False,
         turbo_kv_compression=False,
-        turbo_prune_keep=8,
-        turbo_prune_min=6,
-        turbo_prune_max=16,
+        turbo_prune_keep=16,
+        turbo_prune_min=12,
+        turbo_prune_max=24,
         turbo_fallback_full_tree=True,
         turbo_fallback_accept_threshold=0,
-        turbo_prune_confidence_margin=1.0,
-        turbo_prune_prescreen_margin=0.75,
-        turbo_prune_min_fraction=0.25,
-        turbo_prune_min_node_fraction=0.30,
-        turbo_prune_node_budget=0,
+        turbo_prune_confidence_margin=0.50,
+        turbo_prune_prescreen_margin=-1.0,
+        turbo_prune_min_fraction=0.0,
+        turbo_prune_min_node_fraction=0.15,
+        turbo_prune_node_budget=40,
         turbo_prune_decisive_margin=1.5,
         turbo_prune_decisive_keep=8,
         turbo_prune_use_qjl=True,
@@ -411,12 +446,12 @@ class MedusaModelABC(nn.Module):
         turbo_prune_use_kv_qjl=False,
         turbo_kv_qjl_dim=128,
         turbo_kv_qjl_layer=-1,
-        turbo_kv_qjl_keep_fraction=0.30,
-        turbo_kv_qjl_weight=0.5,
+        turbo_kv_qjl_keep_fraction=0.55,
+        turbo_kv_qjl_weight=0.05,
         turbo_kv_qjl_min_kv_len=16384,
-        turbo_kv_qjl_medusa_pool_fraction=0.70,
+        turbo_kv_qjl_medusa_pool_fraction=0.80,
         turbo_kv_qjl_medusa_anchor_keep=2,
-        turbo_packed_kv_qjl_auto_disable_after=4,
+        turbo_packed_kv_qjl_auto_disable_after=2,
         turbo_force_full_tree_fast_verifier=False,
         turbo_lazy_tree_medusa_logits=True,
         turbo_skip_threshold_high=1.1,
@@ -432,7 +467,7 @@ class MedusaModelABC(nn.Module):
         turbo_hybrid_hot_window=512,
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
-        turbo_qjl_dim=128,
+        turbo_qjl_dim=64,
         stream=True,
         collect_stats=False,
     ):
