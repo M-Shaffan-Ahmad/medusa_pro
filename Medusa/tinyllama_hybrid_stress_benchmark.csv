@@ -1,0 +1,25 @@
+prompt,mode,tokens,prompt_tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_vs_base,text
+medium_context,medusa_base,69,911,0.855571,0.192764,80.647863,3216.523438,3370.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,turbo_prune_only,69,911,0.891294,0.183984,77.415519,3216.523438,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,turbo_vq_hybrid_h128,68,911,2.818893,0.958372,24.122947,3201.076172,3348.000000,0.246914,"1. Implement NUMA-aware tiling to optimize memory access patterns for different data types and operations.
+2. Implement overlap communication with compute to reduce communication overhead and improve performance.
+3. Implement cache blocking to improve cache hit rates and reduce cache misses.
+4. Implement fused attention to"
+medium_context,turbo_vq_shadow,69,911,1.004128,0.203158,68.716314,3242.331055,3388.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,turbo_vq_strict,70,911,3.905839,2.466323,17.921886,3285.006836,3406.000000,0.664577,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve cache performance.
+4. Implement fused attention to improve memory bandwidth utilization.
+5. Implement quant"

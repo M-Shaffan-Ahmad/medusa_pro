@@ -32,10 +32,12 @@ try:
     from .triton_kernels import (
         compressed_kv_attention_polar_triton,
         compressed_kv_attention_turbo_vq_triton,
+        hybrid_kv_attention_turbo_vq_triton,
     )
 except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
     compressed_kv_attention_polar_triton = None
     compressed_kv_attention_turbo_vq_triton = None
+    hybrid_kv_attention_turbo_vq_triton = None
 
 
 if is_flash_attn_available():
@@ -287,7 +289,16 @@ class MistralAttention(nn.Module):
             if use_direct_compressed_kv:
                 _, cache_len = key_cache.append_compressed(key_states, dim=2)
                 value_cache.append_compressed(value_states, dim=2)
-                if compressed_kv_attention_turbo_vq_triton is not None:
+                if hybrid_kv_attention_turbo_vq_triton is not None:
+                    attn_output = hybrid_kv_attention_turbo_vq_triton(
+                        query_states,
+                        key_cache,
+                        value_cache,
+                        attention_mask,
+                        self.num_key_value_groups,
+                        1.0 / math.sqrt(self.head_dim),
+                    )
+                if attn_output is None and compressed_kv_attention_turbo_vq_triton is not None:
                     attn_output = compressed_kv_attention_turbo_vq_triton(
                         query_states,
                         key_cache,

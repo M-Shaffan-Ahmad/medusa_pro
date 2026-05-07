@@ -4,11 +4,15 @@ import torch.nn.functional as F
 
 try:
     from .triton_kernels import (
+        copy_selected_kv_cache_triton,
+        greedy_tree_posterior_triton,
         materialize_pruned_medusa_triton,
         qjl_path_scores_triton,
         turbo_qjl_select_paths_triton,
     )
 except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
+    copy_selected_kv_cache_triton = None
+    greedy_tree_posterior_triton = None
     materialize_pruned_medusa_triton = None
     qjl_path_scores_triton = None
     turbo_qjl_select_paths_triton = None
@@ -129,15 +133,17 @@ def estimate_medusa_path_scores(medusa_logits, logits, tree_indices, retrieve_in
     is much better aligned with the tree construction than ranking token ids only
     with the current hidden state.
     """
-    root_log_probs = F.log_softmax(logits[0, -1], dim=-1)
+    # Ranking candidate paths does not require full-vocab normalization. Avoiding
+    # log_softmax here removes a noticeable per-step overhead from the pruning
+    # planner; downstream z-normalization handles scale differences.
+    root_logits = logits[0, -1]
     if candidates is not None:
-        root_token = candidates[0, 0].clamp(0, root_log_probs.shape[0] - 1)
-        root_score = root_log_probs[root_token]
+        root_token = candidates[0, 0].clamp(0, root_logits.shape[0] - 1)
+        root_score = root_logits[root_token]
     else:
-        root_score = torch.max(root_log_probs)
+        root_score = torch.max(root_logits)
 
-    medusa_log_probs = F.log_softmax(medusa_logits[:, 0, -1], dim=-1)
-    medusa_topk = torch.topk(medusa_log_probs, TOPK, dim=-1).values
+    medusa_topk = torch.topk(medusa_logits[:, 0, -1], TOPK, dim=-1).values
     score_bank = torch.cat([root_score.reshape(1), medusa_topk.reshape(-1)], dim=0)
 
     node_scores = score_bank[tree_indices]
@@ -577,6 +583,113 @@ def select_topk_paths_for_verification(
     return selected
 
 
+def select_paths_for_node_budget(
+    approx_scores,
+    retrieve_indices,
+    tree_indices,
+    node_budget,
+    min_keep=1,
+    max_keep=None,
+):
+    """
+    Select high-scoring paths while capping unique Medusa tree nodes.
+
+    This maps pruning to the real verifier cost better than a fixed path count:
+    shared ancestors are cheap, while new unique nodes increase the tree forward.
+    """
+    total_paths = int(approx_scores.shape[0])
+    if total_paths == 0:
+        return torch.empty(0, dtype=torch.long, device=approx_scores.device)
+    if node_budget is None or int(node_budget) <= 0:
+        return select_topk_paths_for_verification(
+            approx_scores,
+            keep_target=max_keep or total_paths,
+            min_keep=min_keep,
+            max_keep=max_keep or total_paths,
+            retrieve_indices=retrieve_indices,
+            tree_indices=tree_indices,
+        )
+
+    max_keep = total_paths if max_keep is None else min(int(max_keep), total_paths)
+    min_keep = min(max(1, int(min_keep)), total_paths)
+    node_budget = max(1, int(node_budget))
+
+    mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+    ranked = torch.argsort(approx_scores, descending=True)
+    if mandatory.numel() > 0:
+        ranked = ranked[~torch.isin(ranked, mandatory)]
+        ordered = torch.cat([mandatory, ranked])
+    else:
+        ordered = ranked
+
+    retrieve_cpu = retrieve_indices.detach().cpu()
+    ordered_ids = [int(x) for x in ordered.detach().cpu().tolist()]
+    selected = []
+    selected_set = set()
+    selected_nodes = set()
+
+    for path_idx in ordered_ids:
+        if path_idx in selected_set or path_idx < 0 or path_idx >= total_paths:
+            continue
+        path_nodes = [int(x) for x in retrieve_cpu[path_idx].tolist() if int(x) >= 0]
+        next_node_count = len(selected_nodes.union(path_nodes))
+        over_budget = next_node_count > node_budget
+        if over_budget and len(selected) >= min_keep:
+            continue
+        selected.append(path_idx)
+        selected_set.add(path_idx)
+        selected_nodes.update(path_nodes)
+        if len(selected) >= max_keep:
+            break
+
+    if len(selected) < min_keep:
+        for path_idx in ordered_ids:
+            if path_idx in selected_set or path_idx < 0 or path_idx >= total_paths:
+                continue
+            selected.append(path_idx)
+            selected_set.add(path_idx)
+            if len(selected) >= min_keep:
+                break
+
+    if len(selected) == 0:
+        selected = [int(torch.argmax(approx_scores).item())]
+
+    return torch.tensor(selected, dtype=torch.long, device=approx_scores.device)
+
+
+def select_paths_for_pruning(
+    approx_scores,
+    keep_target=12,
+    min_keep=10,
+    max_keep=15,
+    retrieve_indices=None,
+    tree_indices=None,
+    node_budget=0,
+):
+    if (
+        node_budget is not None
+        and int(node_budget) > 0
+        and retrieve_indices is not None
+        and tree_indices is not None
+    ):
+        return select_paths_for_node_budget(
+            approx_scores,
+            retrieve_indices,
+            tree_indices,
+            node_budget=node_budget,
+            min_keep=min_keep,
+            max_keep=max_keep,
+        )
+    return select_topk_paths_for_verification(
+        approx_scores,
+        keep_target=keep_target,
+        min_keep=min_keep,
+        max_keep=max_keep,
+        retrieve_indices=retrieve_indices,
+        tree_indices=tree_indices,
+    )
+
+
 def should_verify_full_tree(approx_scores, margin_scale=0.25):
     """
     Return True when pass-1 scores are too flat to safely save work via pruning.
@@ -590,6 +703,65 @@ def should_verify_full_tree(approx_scores, margin_scale=0.25):
     margin = float((top2[0] - top2[1]).item())
     score_std = float(approx_scores.std(unbiased=False).item())
     return score_std <= 1e-6 or margin < float(margin_scale) * score_std
+
+
+def should_skip_pruning_for_low_gain(selected_paths, total_paths, min_prune_fraction=0.0):
+    """
+    Return True when the pruned verifier would keep too much of the full tree.
+
+    Pruning is only a speed win if it removes enough candidate paths to offset
+    pass-1 planning, layout materialization, and potential fallback costs.
+    """
+    if min_prune_fraction <= 0.0 or total_paths <= 0:
+        return False
+    kept = int(selected_paths.numel())
+    pruned_fraction = float(max(0, total_paths - kept)) / float(total_paths)
+    return pruned_fraction < float(min_prune_fraction)
+
+
+def _score_margin_stats(scores):
+    """Return top-2 margin and population stddev for a small score vector."""
+    if scores.shape[0] <= 1:
+        return 0.0, 0.0
+    top2 = torch.topk(scores, k=2, dim=0).values
+    margin = float((top2[0] - top2[1]).item())
+    score_std = float(scores.std(unbiased=False).item())
+    return margin, score_std
+
+
+def pruned_layout_has_enough_node_gain(layout, full_node_count, min_node_prune_fraction=0.0):
+    """
+    Return True when the compact verifier tree removes enough actual tree nodes.
+
+    Path-count pruning can look useful while still keeping most unique tree nodes.
+    Verifier cost is closer to selected node/query count, so this is the final
+    low-overhead guard before launching the pruned forward pass.
+    """
+    if min_node_prune_fraction <= 0.0:
+        return True
+    full_node_count = max(1, int(full_node_count))
+    selected_node_count = int(layout["selected_nodes"].numel())
+    pruned_fraction = float(max(0, full_node_count - selected_node_count)) / float(full_node_count)
+    return pruned_fraction >= float(min_node_prune_fraction)
+
+
+def selected_paths_have_enough_node_gain(
+    retrieve_indices,
+    selected_path_indices,
+    full_node_count,
+    min_node_prune_fraction=0.0,
+):
+    """
+    Cheap pre-layout version of the node-gain gate used before optional QJL work.
+    """
+    if min_node_prune_fraction <= 0.0:
+        return True
+    full_node_count = max(1, int(full_node_count))
+    selected_paths = retrieve_indices.index_select(0, selected_path_indices)
+    valid_mask = selected_paths >= 0
+    selected_node_count = int(torch.unique(selected_paths[valid_mask]).numel())
+    pruned_fraction = float(max(0, full_node_count - selected_node_count)) / float(full_node_count)
+    return pruned_fraction >= float(min_node_prune_fraction)
 
 
 def plan_turbo_pruning(
@@ -606,6 +778,13 @@ def plan_turbo_pruning(
     max_keep=15,
     margin_scale=0.25,
     mandatory_indices=None,
+    prescreen_margin_scale=0.75,
+    min_prune_fraction=0.25,
+    min_node_prune_fraction=0.0,
+    node_budget=0,
+    decisive_margin_scale=1.5,
+    decisive_keep=8,
+    use_qjl=True,
 ):
     """
     Compute Turbo pass-1 scores, selected paths, and full-tree confidence gate.
@@ -630,6 +809,79 @@ def plan_turbo_pruning(
 
     if mandatory_indices is None:
         mandatory_indices = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+
+    medusa_margin, medusa_std = _score_margin_stats(medusa_path_scores)
+    if prescreen_margin_scale is not None and float(prescreen_margin_scale) >= 0.0:
+        if medusa_std <= 1e-6 or medusa_margin < float(prescreen_margin_scale) * medusa_std:
+            return medusa_path_scores, path_lengths, mandatory_indices, True
+
+    prescreen_selected_paths = None
+    if min_node_prune_fraction > 0.0:
+        prescreen_selected_paths = select_paths_for_pruning(
+            medusa_path_scores,
+            keep_target=keep_target,
+            min_keep=min_keep,
+            max_keep=max_keep,
+            retrieve_indices=retrieve_indices,
+            tree_indices=tree_indices,
+            node_budget=node_budget,
+        )
+        if not selected_paths_have_enough_node_gain(
+            retrieve_indices,
+            prescreen_selected_paths,
+            full_node_count=tree_indices.numel(),
+            min_node_prune_fraction=min_node_prune_fraction,
+        ):
+            return medusa_path_scores, path_lengths, mandatory_indices, True
+
+    if (
+        decisive_margin_scale is not None
+        and float(decisive_margin_scale) >= 0.0
+        and medusa_std > 1e-6
+        and medusa_margin >= float(decisive_margin_scale) * medusa_std
+    ):
+        decisive_keep = keep_target if decisive_keep is None else int(decisive_keep)
+        selected_paths = select_paths_for_pruning(
+            medusa_path_scores,
+            keep_target=decisive_keep,
+            min_keep=min(min_keep, decisive_keep),
+            max_keep=min(max_keep, decisive_keep),
+            retrieve_indices=retrieve_indices,
+            tree_indices=tree_indices,
+            node_budget=node_budget,
+        )
+        verify_full_tree = should_skip_pruning_for_low_gain(
+            selected_paths,
+            medusa_path_scores.shape[0],
+            min_prune_fraction=min_prune_fraction,
+        ) or not selected_paths_have_enough_node_gain(
+            retrieve_indices,
+            selected_paths,
+            full_node_count=tree_indices.numel(),
+            min_node_prune_fraction=min_node_prune_fraction,
+        )
+        return medusa_path_scores, path_lengths, selected_paths, verify_full_tree
+
+    if not use_qjl:
+        if prescreen_selected_paths is None:
+            prescreen_selected_paths = select_paths_for_pruning(
+                medusa_path_scores,
+                keep_target=keep_target,
+                min_keep=min_keep,
+                max_keep=max_keep,
+                retrieve_indices=retrieve_indices,
+                tree_indices=tree_indices,
+                node_budget=node_budget,
+            )
+        verify_full_tree = should_verify_full_tree(
+            medusa_path_scores,
+            margin_scale=margin_scale,
+        ) or should_skip_pruning_for_low_gain(
+            prescreen_selected_paths,
+            medusa_path_scores.shape[0],
+            min_prune_fraction=min_prune_fraction,
+        )
+        return medusa_path_scores, path_lengths, prescreen_selected_paths, verify_full_tree
 
     if (
         turbo_qjl_select_paths_triton is not None
@@ -664,6 +916,26 @@ def plan_turbo_pruning(
         )
         if fast_plan is not None:
             approx_scores, selected_paths, verify_full_tree = fast_plan
+            if node_budget is not None and int(node_budget) > 0:
+                selected_paths = select_paths_for_pruning(
+                    approx_scores,
+                    keep_target=keep_target,
+                    min_keep=min_keep,
+                    max_keep=max_keep,
+                    retrieve_indices=retrieve_indices,
+                    tree_indices=tree_indices,
+                    node_budget=node_budget,
+                )
+            verify_full_tree = verify_full_tree or should_skip_pruning_for_low_gain(
+                selected_paths,
+                approx_scores.shape[0],
+                min_prune_fraction=min_prune_fraction,
+            ) or not selected_paths_have_enough_node_gain(
+                retrieve_indices,
+                selected_paths,
+                full_node_count=tree_indices.numel(),
+                min_node_prune_fraction=min_node_prune_fraction,
+            )
             return approx_scores, path_lengths, selected_paths, verify_full_tree
 
     if (
@@ -685,17 +957,27 @@ def plan_turbo_pruning(
     else:
         approx_scores = medusa_path_scores
 
-    selected_paths = select_topk_paths_for_verification(
+    selected_paths = select_paths_for_pruning(
         approx_scores,
         keep_target=keep_target,
         min_keep=min_keep,
         max_keep=max_keep,
         retrieve_indices=retrieve_indices,
         tree_indices=tree_indices,
+        node_budget=node_budget,
     )
     verify_full_tree = should_verify_full_tree(
         approx_scores,
         margin_scale=margin_scale,
+    ) or should_skip_pruning_for_low_gain(
+        selected_paths,
+        approx_scores.shape[0],
+        min_prune_fraction=min_prune_fraction,
+    ) or not selected_paths_have_enough_node_gain(
+        retrieve_indices,
+        selected_paths,
+        full_node_count=tree_indices.numel(),
+        min_node_prune_fraction=min_node_prune_fraction,
     )
     return approx_scores, path_lengths, selected_paths, verify_full_tree
 
@@ -727,6 +1009,7 @@ def build_cached_pruned_medusa_buffers(
     selected_path_indices,
     layout_cache=None,
     max_cache_size=128,
+    min_node_prune_fraction=0.0,
 ):
     """
     Build/materialize pruned buffers while reusing selected-path layouts.
@@ -735,13 +1018,19 @@ def build_cached_pruned_medusa_buffers(
     selected path ids. Caching avoids repeatedly rebuilding masks and remaps.
     """
     if layout_cache is None:
-        return build_pruned_medusa_buffers(
-            full_tree_candidates,
+        layout = build_pruned_medusa_layout(
             full_retrieve_indices,
             full_medusa_position_ids,
             full_medusa_attn_mask,
             selected_path_indices,
         )
+        if not pruned_layout_has_enough_node_gain(
+            layout,
+            full_node_count=full_medusa_position_ids.numel(),
+            min_node_prune_fraction=min_node_prune_fraction,
+        ):
+            return None
+        return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
 
     key = tuple(int(x) for x in selected_path_indices.detach().cpu().tolist())
     layout = layout_cache.get(key)
@@ -755,6 +1044,12 @@ def build_cached_pruned_medusa_buffers(
         if len(layout_cache) >= int(max_cache_size):
             layout_cache.pop(next(iter(layout_cache)))
         layout_cache[key] = layout
+    if not pruned_layout_has_enough_node_gain(
+        layout,
+        full_node_count=full_medusa_position_ids.numel(),
+        min_node_prune_fraction=min_node_prune_fraction,
+    ):
+        return None
     return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
 
 
@@ -879,6 +1174,7 @@ def tree_decoding(
     retrieve_indices,
     medusa_attn_mask=None,
     return_hidden=False,
+    gather_paths=True,
 ):
     """
     Decode the tree candidates using the provided model and reorganize the logits.
@@ -912,6 +1208,11 @@ def tree_decoding(
         medusa_forward=True,
     )
     
+    if not gather_paths:
+        if return_hidden:
+            return tree_medusa_logits, tree_logits, outputs, outputs[0][0]
+        return tree_medusa_logits, tree_logits, outputs
+
     # Reorder the obtained logits based on the retrieve_indices to ensure consistency with some reference ordering.
     logits = tree_logits[0, retrieve_indices]
     medusa_logits = tree_medusa_logits[:, 0, retrieve_indices]
@@ -919,6 +1220,48 @@ def tree_decoding(
         hidden_paths = outputs[0][0, retrieve_indices]
         return medusa_logits, logits, outputs, hidden_paths
     return medusa_logits, logits, outputs
+
+
+def evaluate_posterior_greedy_from_tree(
+    tree_logits,
+    candidates,
+    retrieve_indices,
+    path_lengths=None,
+):
+    """
+    Greedy posterior evaluation directly from tree-node logits.
+
+    This avoids materializing duplicated `[paths, depth, vocab]` logits. For
+    temperature=0, posterior acceptance only needs each source node's argmax.
+    """
+    if greedy_tree_posterior_triton is not None:
+        fast_result = greedy_tree_posterior_triton(
+            tree_logits,
+            candidates,
+            retrieve_indices,
+            path_lengths=path_lengths,
+        )
+        if fast_result is not None:
+            return fast_result
+
+    node_logits = tree_logits[0] if tree_logits.dim() == 3 else tree_logits
+    node_argmax = torch.argmax(node_logits, dim=-1)
+    source_nodes = retrieve_indices[:, :-1].clamp_min(0)
+    posterior_mask = (candidates[:, 1:] == node_argmax[source_nodes]).int()
+    if path_lengths is not None:
+        valid_pos = (
+            torch.arange(posterior_mask.shape[1], device=posterior_mask.device)
+            .unsqueeze(0)
+            < path_lengths.unsqueeze(1)
+        )
+        posterior_mask = posterior_mask * valid_pos.int()
+    candidates_accept_length = (torch.cumprod(posterior_mask, dim=1)).sum(dim=1)
+    accept_length = candidates_accept_length.max()
+    if accept_length == 0:
+        best_candidate = torch.tensor(0, dtype=torch.long, device=candidates.device)
+    else:
+        best_candidate = torch.argmax(candidates_accept_length).to(torch.long)
+    return best_candidate, accept_length
 
 def get_nucleus_posterior_mask(logits, candidates, temperature, top_p):
     """
@@ -1175,24 +1518,42 @@ def update_inference_inputs(
     """
     # Calculate the starting position for new tokens based on the previous input length
     prev_input_len = input_ids.shape[1]
+    accept_len_int = int(accept_length.item() if torch.is_tensor(accept_length) else accept_length)
     # Map the best candidate indices to the original indices in the sequence
     select_indices = (
-        retrieve_indices[best_candidate, : accept_length + 1] + prev_input_len
+        retrieve_indices[best_candidate, : accept_len_int + 1] + prev_input_len
     )
     # Append the tokens from the best candidate to the input sequence
     input_ids = torch.cat(
-        [input_ids, candidates[None, best_candidate, : accept_length + 1]], dim=-1
+        [input_ids, candidates[None, best_candidate, : accept_len_int + 1]], dim=-1
     )
     # Update the past key values based on the selected tokens.
-    if past_key_values_data is not None:
-        # Source tensor that contains relevant past information based on the selected candidate
-        tgt = past_key_values_data[..., select_indices, :]
-        # Destination tensor where the relevant past information will be stored
-        dst = past_key_values_data[..., prev_input_len : prev_input_len + tgt.shape[-2], :]
-        # Copy relevant past information from the source to the destination
-        dst.copy_(tgt, non_blocking=True)
+    if accept_len_int == 0:
+        # The root candidate KV is already written at prev_input_len by tree_decoding,
+        # so copying that position onto itself only burns bandwidth.
+        current_length_data.fill_(prev_input_len + 1)
+    elif past_key_values_data is not None:
+        copied = False
+        if copy_selected_kv_cache_triton is not None:
+            # rel=0 is the root token and is already at prev_input_len.
+            copied = copy_selected_kv_cache_triton(
+                past_key_values_data,
+                select_indices,
+                prev_input_len,
+                copy_start=1,
+            )
+        if not copied:
+            # Source tensor that contains relevant past information based on the selected candidate
+            tgt = past_key_values_data[..., select_indices, :]
+            # Destination tensor where the relevant past information will be stored
+            dst = past_key_values_data[..., prev_input_len : prev_input_len + tgt.shape[-2], :]
+            # Copy relevant past information from the source to the destination
+            dst.copy_(tgt, non_blocking=True)
+            copied_len = tgt.shape[-2]
+        else:
+            copied_len = select_indices.shape[0]
         # Update the current length tensor (currently only support batch size is 1)
-        current_length_data.fill_(prev_input_len + tgt.shape[-2])
+        current_length_data.fill_(prev_input_len + copied_len)
     else:
         if past_key_values is None:
             raise ValueError(
@@ -1204,11 +1565,75 @@ def update_inference_inputs(
         current_length_data.fill_(prev_input_len + select_indices.shape[0])
 
     # Extract logits and medusa logits for the accepted tokens
-    logits = logits[None, best_candidate, accept_length : accept_length + 1]
+    logits = logits[None, best_candidate, accept_len_int : accept_len_int + 1]
     medusa_logits = medusa_logits[
-        :, None, best_candidate, accept_length : accept_length + 1
+        :, None, best_candidate, accept_len_int : accept_len_int + 1
     ]
     # Update the new token counter
-    new_token += accept_length + 1
+    new_token += accept_len_int + 1
+
+    return input_ids, logits, medusa_logits, new_token
+
+
+def update_inference_inputs_from_tree(
+    input_ids,
+    candidates,
+    best_candidate,
+    accept_length,
+    retrieve_indices,
+    outputs,
+    tree_logits,
+    tree_medusa_logits,
+    new_token,
+    past_key_values_data,
+    current_length_data,
+    past_key_values=None,
+):
+    """
+    Update inference state using raw tree-node logits instead of gathered path logits.
+    """
+    prev_input_len = input_ids.shape[1]
+    accept_len_int = int(accept_length.item() if torch.is_tensor(accept_length) else accept_length)
+    select_indices = (
+        retrieve_indices[best_candidate, : accept_len_int + 1] + prev_input_len
+    )
+    input_ids = torch.cat(
+        [input_ids, candidates[None, best_candidate, : accept_len_int + 1]], dim=-1
+    )
+
+    if accept_len_int == 0:
+        # The accepted root KV is already in the first tree slot.
+        current_length_data.fill_(prev_input_len + 1)
+    elif past_key_values_data is not None:
+        copied = False
+        if copy_selected_kv_cache_triton is not None:
+            copied = copy_selected_kv_cache_triton(
+                past_key_values_data,
+                select_indices,
+                prev_input_len,
+                copy_start=1,
+            )
+        if not copied:
+            tgt = past_key_values_data[..., select_indices, :]
+            dst = past_key_values_data[..., prev_input_len : prev_input_len + tgt.shape[-2], :]
+            dst.copy_(tgt, non_blocking=True)
+            copied_len = tgt.shape[-2]
+        else:
+            copied_len = select_indices.shape[0]
+        current_length_data.fill_(prev_input_len + copied_len)
+    else:
+        if past_key_values is None:
+            raise ValueError(
+                "past_key_values must be provided when past_key_values_data is None."
+            )
+        for layer_kv in past_key_values:
+            for kv_cache in layer_kv:
+                kv_cache.copy(select_indices, prev_input_len, dim=2)
+        current_length_data.fill_(prev_input_len + select_indices.shape[0])
+
+    node_idx = retrieve_indices[best_candidate, accept_len_int].reshape(1)
+    logits = tree_logits.index_select(1, node_idx)
+    medusa_logits = tree_medusa_logits.index_select(2, node_idx)
+    new_token += accept_len_int + 1
 
     return input_ids, logits, medusa_logits, new_token

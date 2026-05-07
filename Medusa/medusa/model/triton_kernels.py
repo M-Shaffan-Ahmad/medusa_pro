@@ -191,6 +191,276 @@ if TRITON_AVAILABLE:
 
 
     @triton.jit
+    def _greedy_tree_posterior_kernel(
+        tree_logits,
+        candidates,
+        retrieve_indices,
+        path_lengths,
+        best_candidate_out,
+        accept_length_out,
+        n_paths: tl.constexpr,
+        path_len: tl.constexpr,
+        vocab_size: tl.constexpr,
+        has_path_lengths: tl.constexpr,
+        BLOCK_P: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+    ):
+        paths = tl.arange(0, BLOCK_P)
+        path_mask = paths < n_paths
+        vocab_offsets = tl.arange(0, BLOCK_V)
+
+        alive = path_mask
+        accept_counts = tl.zeros((BLOCK_P,), dtype=tl.int32)
+
+        for step in tl.static_range(0, path_len - 1):
+            if has_path_lengths:
+                lengths = tl.load(path_lengths + paths, mask=path_mask, other=0).to(tl.int32)
+                valid_step = step < lengths
+            else:
+                valid_step = path_mask
+
+            active = alive & valid_step & path_mask
+            node_ids = tl.load(
+                retrieve_indices + paths * path_len + step,
+                mask=path_mask,
+                other=0,
+            ).to(tl.int32)
+            node_ids = tl.maximum(node_ids, 0)
+
+            best_vals = tl.full((BLOCK_P,), -float("inf"), dtype=tl.float32)
+            best_ids = tl.zeros((BLOCK_P,), dtype=tl.int32)
+
+            for vocab_start in tl.range(0, vocab_size, BLOCK_V):
+                token_ids = vocab_start + vocab_offsets
+                vocab_mask = token_ids < vocab_size
+                vals = tl.load(
+                    tree_logits + node_ids[:, None] * vocab_size + token_ids[None, :],
+                    mask=active[:, None] & vocab_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                chunk_best = tl.max(vals, axis=1)
+                chunk_ids = tl.min(
+                    tl.where(
+                        (vals == chunk_best[:, None]) & vocab_mask[None, :],
+                        token_ids[None, :],
+                        vocab_size,
+                    ),
+                    axis=1,
+                ).to(tl.int32)
+                better = chunk_best > best_vals
+                best_vals = tl.where(better, chunk_best, best_vals)
+                best_ids = tl.where(better, chunk_ids, best_ids)
+
+            candidate_tokens = tl.load(
+                candidates + paths * path_len + step + 1,
+                mask=path_mask,
+                other=-1,
+            ).to(tl.int32)
+            matched = active & (candidate_tokens == best_ids)
+            accept_counts += tl.where(matched, 1, 0)
+            alive = alive & matched
+
+        best_len = tl.max(tl.where(path_mask, accept_counts, -1), axis=0)
+        best_idx = tl.min(
+            tl.where((accept_counts == best_len) & path_mask, paths, BLOCK_P),
+            axis=0,
+        )
+        best_idx = tl.where(best_len <= 0, 0, best_idx)
+        best_len = tl.maximum(best_len, 0)
+
+        tl.store(best_candidate_out, best_idx)
+        tl.store(accept_length_out, best_len)
+
+
+    @triton.jit
+    def _greedy_tree_posterior_unique_kernel(
+        tree_logits,
+        candidates,
+        retrieve_indices,
+        path_lengths,
+        best_candidate_out,
+        accept_length_out,
+        n_nodes: tl.constexpr,
+        n_paths: tl.constexpr,
+        path_len: tl.constexpr,
+        vocab_size: tl.constexpr,
+        has_path_lengths: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_P: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+    ):
+        nodes = tl.arange(0, BLOCK_N)
+        paths = tl.arange(0, BLOCK_P)
+        vocab_offsets = tl.arange(0, BLOCK_V)
+        node_mask = nodes < n_nodes
+        path_mask = paths < n_paths
+
+        node_best_vals = tl.full((BLOCK_N,), -float("inf"), dtype=tl.float32)
+        node_best_ids = tl.zeros((BLOCK_N,), dtype=tl.int32)
+
+        for vocab_start in tl.range(0, vocab_size, BLOCK_V):
+            token_ids = vocab_start + vocab_offsets
+            vocab_mask = token_ids < vocab_size
+            vals = tl.load(
+                tree_logits + nodes[:, None] * vocab_size + token_ids[None, :],
+                mask=node_mask[:, None] & vocab_mask[None, :],
+                other=-float("inf"),
+            ).to(tl.float32)
+            chunk_best = tl.max(vals, axis=1)
+            chunk_ids = tl.min(
+                tl.where(
+                    (vals == chunk_best[:, None]) & vocab_mask[None, :],
+                    token_ids[None, :],
+                    vocab_size,
+                ),
+                axis=1,
+            ).to(tl.int32)
+            better = chunk_best > node_best_vals
+            node_best_vals = tl.where(better, chunk_best, node_best_vals)
+            node_best_ids = tl.where(better, chunk_ids, node_best_ids)
+
+        alive = path_mask
+        accept_counts = tl.zeros((BLOCK_P,), dtype=tl.int32)
+
+        for step in tl.static_range(0, path_len - 1):
+            if has_path_lengths:
+                lengths = tl.load(path_lengths + paths, mask=path_mask, other=0).to(tl.int32)
+                valid_step = step < lengths
+            else:
+                valid_step = path_mask
+
+            active = alive & valid_step & path_mask
+            node_ids = tl.load(
+                retrieve_indices + paths * path_len + step,
+                mask=path_mask,
+                other=0,
+            ).to(tl.int32)
+            node_ids = tl.maximum(node_ids, 0)
+
+            node_matches = nodes[:, None] == node_ids[None, :]
+            expected_tokens = tl.max(
+                tl.where(node_matches & node_mask[:, None] & path_mask[None, :], node_best_ids[:, None], 0),
+                axis=0,
+            )
+            candidate_tokens = tl.load(
+                candidates + paths * path_len + step + 1,
+                mask=path_mask,
+                other=-1,
+            ).to(tl.int32)
+            matched = active & (candidate_tokens == expected_tokens)
+            accept_counts += tl.where(matched, 1, 0)
+            alive = alive & matched
+
+        best_len = tl.max(tl.where(path_mask, accept_counts, -1), axis=0)
+        best_idx = tl.min(
+            tl.where((accept_counts == best_len) & path_mask, paths, BLOCK_P),
+            axis=0,
+        )
+        best_idx = tl.where(best_len <= 0, 0, best_idx)
+        best_len = tl.maximum(best_len, 0)
+
+        tl.store(best_candidate_out, best_idx)
+        tl.store(accept_length_out, best_len)
+
+
+    @triton.jit
+    def _greedy_tree_accept_from_argmax_kernel(
+        node_argmax,
+        candidates,
+        retrieve_indices,
+        path_lengths,
+        best_candidate_out,
+        accept_length_out,
+        n_paths: tl.constexpr,
+        path_len: tl.constexpr,
+        has_path_lengths: tl.constexpr,
+        BLOCK_P: tl.constexpr,
+    ):
+        paths = tl.arange(0, BLOCK_P)
+        path_mask = paths < n_paths
+        alive = path_mask
+        accept_counts = tl.zeros((BLOCK_P,), dtype=tl.int32)
+
+        for step in tl.static_range(0, path_len - 1):
+            if has_path_lengths:
+                lengths = tl.load(path_lengths + paths, mask=path_mask, other=0).to(tl.int32)
+                valid_step = step < lengths
+            else:
+                valid_step = path_mask
+
+            node_ids = tl.load(
+                retrieve_indices + paths * path_len + step,
+                mask=path_mask,
+                other=0,
+            ).to(tl.int32)
+            node_ids = tl.maximum(node_ids, 0)
+            expected_tokens = tl.load(node_argmax + node_ids, mask=path_mask, other=-1).to(tl.int32)
+            candidate_tokens = tl.load(
+                candidates + paths * path_len + step + 1,
+                mask=path_mask,
+                other=-1,
+            ).to(tl.int32)
+            matched = alive & valid_step & path_mask & (candidate_tokens == expected_tokens)
+            accept_counts += tl.where(matched, 1, 0)
+            alive = alive & matched
+
+        best_len = tl.max(tl.where(path_mask, accept_counts, -1), axis=0)
+        best_idx = tl.min(
+            tl.where((accept_counts == best_len) & path_mask, paths, BLOCK_P),
+            axis=0,
+        )
+        best_idx = tl.where(best_len <= 0, 0, best_idx)
+        best_len = tl.maximum(best_len, 0)
+
+        tl.store(best_candidate_out, best_idx)
+        tl.store(accept_length_out, best_len)
+
+
+    @triton.jit
+    def _copy_selected_kv_cache_kernel(
+        kv_data,
+        select_indices,
+        prev_input_len,
+        total_elements: tl.constexpr,
+        batch_size: tl.constexpr,
+        num_heads: tl.constexpr,
+        max_length: tl.constexpr,
+        head_dim: tl.constexpr,
+        copy_start: tl.constexpr,
+        copy_count: tl.constexpr,
+        BLOCK: tl.constexpr,
+    ):
+        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < total_elements
+
+        dim = offsets % head_dim
+        tmp = offsets // head_dim
+        rel_copy = tmp % copy_count
+        tmp = tmp // copy_count
+        head = tmp % num_heads
+        tmp = tmp // num_heads
+        batch = tmp % batch_size
+        layer_kv = tmp // batch_size
+
+        rel = rel_copy + copy_start
+        src_pos = tl.load(select_indices + rel, mask=mask, other=0).to(tl.int64)
+        dst_pos = prev_input_len + rel
+
+        src = (
+            (((layer_kv * batch_size + batch) * num_heads + head) * max_length + src_pos)
+            * head_dim
+            + dim
+        )
+        dst = (
+            (((layer_kv * batch_size + batch) * num_heads + head) * max_length + dst_pos)
+            * head_dim
+            + dim
+        )
+        vals = tl.load(kv_data + src, mask=mask, other=0.0)
+        tl.store(kv_data + dst, vals, mask=mask)
+
+
+    @triton.jit
     def _polar_decode_range_kernel(
         radius_q,
         theta_q,
@@ -734,6 +1004,169 @@ if TRITON_AVAILABLE:
 
 
     @triton.jit
+    def _turbo_vq_hybrid_attention_decode_kernel(
+        query,
+        key_q_idx,
+        key_scale,
+        key_codebook,
+        key_rotation_t,
+        key_residual_sign_packed,
+        key_residual_norm,
+        key_residual_proj,
+        value_q_idx,
+        value_scale,
+        value_codebook,
+        value_rotation_t,
+        key_hot,
+        value_hot,
+        attention_mask,
+        out,
+        kv_len,
+        old_len,
+        query_stride_h,
+        query_stride_q,
+        query_stride_d,
+        max_length: tl.constexpr,
+        hot_capacity: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        residual_dim: tl.constexpr,
+        residual_packed_dim: tl.constexpr,
+        residual_coeff: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_D: tl.constexpr,
+        BLOCK_R: tl.constexpr,
+    ):
+        q_head = tl.program_id(0)
+        kv_head = q_head // num_key_value_groups
+
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        dim_offsets = tl.arange(0, BLOCK_D)
+        residual_offsets = tl.arange(0, BLOCK_R)
+        dim_mask = dim_offsets < head_dim
+        residual_mask = residual_offsets < residual_dim
+
+        q_base = q_head * query_stride_h
+        q_vals = tl.load(
+            query + q_base + dim_offsets * query_stride_d,
+            mask=dim_mask,
+            other=0.0,
+        ).to(tl.float32)
+
+        rot_for_q = tl.load(
+            key_rotation_t + dim_offsets[None, :] * head_dim + dim_offsets[:, None],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_rot = tl.sum(q_vals[:, None] * rot_for_q, axis=0)
+
+        residual_proj = tl.load(
+            key_residual_proj + dim_offsets[:, None] * residual_dim + residual_offsets[None, :],
+            mask=dim_mask[:, None] & residual_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_residual_proj = tl.sum(q_vals[:, None] * residual_proj, axis=0)
+
+        rot_for_out = tl.load(
+            value_rotation_t + dim_offsets[:, None] * head_dim + dim_offsets[None, :],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
+        m_i = tl.full((), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, old_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < old_len
+            cache_base = kv_head * max_length + kv_offsets
+            kv_dim_base = cache_base[:, None] * head_dim + dim_offsets[None, :]
+            kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_idx = tl.load(key_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            key_code = tl.load(key_codebook + key_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
+            key_scales = tl.load(key_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            key_rot = key_code * key_scales[:, None]
+            scores = tl.sum(key_rot * q_rot[None, :], axis=1)
+
+            pack_offsets = residual_offsets // 8
+            bit_offsets = residual_offsets - (pack_offsets * 8)
+            sign_base = cache_base[:, None] * residual_packed_dim + pack_offsets[None, :]
+            packed = tl.load(
+                key_residual_sign_packed + sign_base,
+                mask=kv_mask[:, None] & residual_mask[None, :],
+                other=0,
+            ).to(tl.int32)
+            sign_bits = (packed >> bit_offsets[None, :]) & 1
+            signs = sign_bits.to(tl.float32) * 2.0 - 1.0
+            signs = tl.where(residual_mask[None, :], signs, 0.0)
+            residual_inner = tl.sum(signs * q_residual_proj[None, :], axis=1)
+            residual_norm = tl.load(key_residual_norm + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            scores += residual_coeff * residual_inner * residual_norm
+
+            scores *= sm_scale
+            scores = tl.where(kv_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + kv_offsets,
+                    mask=kv_mask,
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=0))
+            p = tl.exp(scores - m_new)
+            alpha = tl.exp(m_i - m_new)
+
+            value_idx = tl.load(value_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            value_code = tl.load(value_codebook + value_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
+            value_scales = tl.load(value_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            value_rot = value_code * value_scales[:, None]
+            value_vals = tl.dot(value_rot, rot_for_out, input_precision="ieee")
+
+            acc = (acc * alpha) + tl.sum(p[:, None] * value_vals, axis=0)
+            l_i = (l_i * alpha) + tl.sum(p, axis=0)
+            m_i = m_new
+
+        hot_len = kv_len - old_len
+        for hot_block_start in tl.range(0, hot_len, BLOCK_N):
+            hot_offsets = hot_block_start + kv_offsets_base
+            kv_offsets = old_len + hot_offsets
+            kv_mask = kv_offsets < kv_len
+            hot_slots = kv_offsets - (kv_offsets // hot_capacity) * hot_capacity
+            hot_base = kv_head * hot_capacity + hot_slots
+            hot_dim_base = hot_base[:, None] * head_dim + dim_offsets[None, :]
+            hot_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_vals = tl.load(key_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            scores = tl.sum(key_vals * q_vals[None, :], axis=1) * sm_scale
+            scores = tl.where(kv_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + kv_offsets,
+                    mask=kv_mask,
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=0))
+            p = tl.exp(scores - m_new)
+            alpha = tl.exp(m_i - m_new)
+
+            value_vals = tl.load(value_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            acc = (acc * alpha) + tl.sum(p[:, None] * value_vals, axis=0)
+            l_i = (l_i * alpha) + tl.sum(p, axis=0)
+            m_i = m_new
+
+        out_base = q_head * head_dim
+        out_vals = acc / tl.maximum(l_i, 1.0e-20)
+        tl.store(out + out_base + dim_offsets, out_vals, mask=dim_mask)
+
+
+    @triton.jit
     def _turbo_vq_compressed_attention_block_kernel(
         query,
         key_q_idx,
@@ -1052,6 +1485,248 @@ def materialize_pruned_medusa_triton(full_tree_candidates, selected_nodes, token
     return pruned_tree_candidates, pruned_candidates
 
 
+def _launch_greedy_tree_unique_posterior(
+    node_logits,
+    candidates,
+    retrieve_indices,
+    path_lengths,
+    n_paths,
+    path_len,
+    vocab_size,
+):
+    n_nodes = int(node_logits.shape[0])
+    if n_nodes <= 0 or n_nodes > 128 or n_paths > 128 or path_len > 8:
+        return None
+    # This variant keeps the whole argmax + prefix selection inside one Triton
+    # program. It is useful for fixed compact trees, but can lose to torch.argmax
+    # on large vocab/tree shapes, so callers should keep a fallback.
+    block_n = triton.next_power_of_2(n_nodes)
+    block_p = triton.next_power_of_2(int(n_paths))
+    block_v = 256
+    if path_lengths is None:
+        path_lengths_ptr = candidates
+        has_path_lengths = False
+    else:
+        path_lengths_ptr = path_lengths.contiguous()
+        has_path_lengths = True
+
+    best_candidate = torch.empty((), device=candidates.device, dtype=torch.long)
+    accept_length = torch.empty((), device=candidates.device, dtype=torch.long)
+    try:
+        _greedy_tree_posterior_unique_kernel[(1,)](
+            node_logits,
+            candidates,
+            retrieve_indices,
+            path_lengths_ptr,
+            best_candidate,
+            accept_length,
+            n_nodes=n_nodes,
+            n_paths=int(n_paths),
+            path_len=int(path_len),
+            vocab_size=int(vocab_size),
+            has_path_lengths=has_path_lengths,
+            BLOCK_N=block_n,
+            BLOCK_P=block_p,
+            BLOCK_V=block_v,
+            num_warps=8,
+        )
+    except Exception:
+        return None
+    return best_candidate, accept_length
+
+
+def _launch_greedy_accept_from_argmax(
+    node_argmax,
+    candidates,
+    retrieve_indices,
+    path_lengths,
+    n_paths,
+    path_len,
+):
+    if n_paths <= 0 or n_paths > 256 or path_len <= 1 or path_len > 16:
+        return None
+    block_p = triton.next_power_of_2(int(n_paths))
+    if path_lengths is None:
+        path_lengths_ptr = candidates
+        has_path_lengths = False
+    else:
+        path_lengths_ptr = path_lengths.contiguous()
+        has_path_lengths = True
+    best_candidate = torch.empty((), device=candidates.device, dtype=torch.long)
+    accept_length = torch.empty((), device=candidates.device, dtype=torch.long)
+    try:
+        _greedy_tree_accept_from_argmax_kernel[(1,)](
+            node_argmax,
+            candidates,
+            retrieve_indices,
+            path_lengths_ptr,
+            best_candidate,
+            accept_length,
+            n_paths=int(n_paths),
+            path_len=int(path_len),
+            has_path_lengths=has_path_lengths,
+            BLOCK_P=block_p,
+            num_warps=4,
+        )
+    except Exception:
+        return None
+    return best_candidate, accept_length
+
+
+def greedy_tree_posterior_triton(tree_logits, candidates, retrieve_indices, path_lengths=None):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(tree_logits):
+        return None
+    if not (_is_cuda_tensor(candidates) and _is_cuda_tensor(retrieve_indices)):
+        return None
+    if tree_logits.dim() == 3:
+        if tree_logits.shape[0] != 1:
+            return None
+        node_logits = tree_logits[0]
+    elif tree_logits.dim() == 2:
+        node_logits = tree_logits
+    else:
+        return None
+    if candidates.dim() != 2 or retrieve_indices.shape != candidates.shape:
+        return None
+    n_paths, path_len = candidates.shape
+    if n_paths <= 0 or path_len <= 1:
+        return None
+    if n_paths > 128 or path_len > 8:
+        return None
+    if path_lengths is not None and not _is_cuda_tensor(path_lengths):
+        return None
+
+    vocab_size = int(node_logits.shape[-1])
+    if vocab_size <= 0 or vocab_size > 131072:
+        return None
+    # Try the true one-kernel verifier only for very small compact trees. On
+    # LLM vocab sizes, torch's row-wise argmax is much faster than scanning all
+    # logits from one Triton program, so the default fast path below keeps
+    # argmax in torch and fuses the remaining prefix/best-path work.
+    argmax_work = int(n_paths) * max(1, int(path_len) - 1)
+    node_logits = node_logits.contiguous()
+    candidates = candidates.contiguous()
+    retrieve_indices = retrieve_indices.contiguous()
+    if path_lengths is not None:
+        path_lengths = path_lengths.contiguous()
+
+    if vocab_size <= 8192 and int(node_logits.shape[0]) <= 16 and int(n_paths) <= 16:
+        fused_unique = _launch_greedy_tree_unique_posterior(
+            node_logits,
+            candidates,
+            retrieve_indices,
+            path_lengths,
+            n_paths,
+            path_len,
+            vocab_size,
+        )
+        if fused_unique is not None:
+            return fused_unique
+
+    node_argmax = torch.argmax(node_logits, dim=-1)
+    accept_result = _launch_greedy_accept_from_argmax(
+        node_argmax,
+        candidates,
+        retrieve_indices,
+        path_lengths,
+        n_paths,
+        path_len,
+    )
+    if accept_result is not None:
+        return accept_result
+
+    # The path-per-program kernel scans vocab once per path position. It is only
+    # kept as a fallback for unusual shapes unsupported by the prefix selector.
+    if argmax_work > int(node_logits.shape[0]) * 2:
+        return None
+
+    block_p = triton.next_power_of_2(int(n_paths))
+    block_v = 512
+    if path_lengths is None:
+        path_lengths_ptr = candidates
+        has_path_lengths = False
+    else:
+        path_lengths_ptr = path_lengths
+        has_path_lengths = True
+
+    best_candidate = torch.empty((), device=candidates.device, dtype=torch.long)
+    accept_length = torch.empty((), device=candidates.device, dtype=torch.long)
+    try:
+        _greedy_tree_posterior_kernel[(1,)](
+            node_logits,
+            candidates,
+            retrieve_indices,
+            path_lengths_ptr,
+            best_candidate,
+            accept_length,
+            n_paths=int(n_paths),
+            path_len=int(path_len),
+            vocab_size=vocab_size,
+            has_path_lengths=has_path_lengths,
+            BLOCK_P=block_p,
+            BLOCK_V=block_v,
+            num_warps=8,
+        )
+    except Exception:
+        node_argmax = torch.argmax(node_logits, dim=-1)
+        return _launch_greedy_accept_from_argmax(
+            node_argmax,
+            candidates,
+            retrieve_indices,
+            path_lengths,
+            n_paths,
+            path_len,
+        )
+    return best_candidate, accept_length
+
+
+def copy_selected_kv_cache_triton(
+    past_key_values_data,
+    select_indices,
+    prev_input_len,
+    copy_start=1,
+):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(past_key_values_data):
+        return False
+    if not _is_cuda_tensor(select_indices):
+        return False
+    if past_key_values_data.dim() != 5 or not past_key_values_data.is_contiguous():
+        return False
+    if select_indices.dim() != 1 or select_indices.numel() <= int(copy_start):
+        return True
+
+    copy_start = int(copy_start)
+    copy_count = int(select_indices.numel()) - copy_start
+    if copy_count <= 0 or copy_count > 8:
+        return False
+
+    layer_kv, batch_size, num_heads, max_length, head_dim = past_key_values_data.shape
+    total = int(layer_kv) * int(batch_size) * int(num_heads) * copy_count * int(head_dim)
+    if total <= 0:
+        return True
+
+    block = 256
+    grid = (triton.cdiv(total, block),)
+    try:
+        _copy_selected_kv_cache_kernel[grid](
+            past_key_values_data,
+            select_indices.contiguous(),
+            int(prev_input_len),
+            total_elements=total,
+            batch_size=int(batch_size),
+            num_heads=int(num_heads),
+            max_length=int(max_length),
+            head_dim=int(head_dim),
+            copy_start=copy_start,
+            copy_count=copy_count,
+            BLOCK=block,
+            num_warps=4,
+        )
+    except Exception:
+        return False
+    return True
+
+
 def turbo_vq_append_triton(cache, tensor, start):
     if not TRITON_AVAILABLE or not _is_cuda_tensor(tensor):
         return False
@@ -1341,6 +2016,8 @@ def compressed_kv_attention_turbo_vq_triton(
         return None
     if query_states.dim() != 4 or query_states.shape[0] != 1:
         return None
+    if getattr(key_cache, "is_hybrid_turbo_vq", False) or getattr(value_cache, "is_hybrid_turbo_vq", False):
+        return None
     if getattr(key_cache, "dequant_data", None) is not None:
         return None
     if getattr(value_cache, "dequant_data", None) is not None:
@@ -1484,6 +2161,133 @@ def compressed_kv_attention_turbo_vq_triton(
                 BLOCK_R=block_r,
                 num_warps=4,
             )
+    except Exception:
+        return None
+    return out
+
+
+def hybrid_kv_attention_turbo_vq_triton(
+    query_states,
+    key_cache,
+    value_cache,
+    attention_mask,
+    num_key_value_groups,
+    sm_scale,
+):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(query_states):
+        return None
+    if not (
+        getattr(key_cache, "is_hybrid_turbo_vq", False)
+        and getattr(value_cache, "is_hybrid_turbo_vq", False)
+    ):
+        return None
+    if query_states.dim() != 4 or query_states.shape[0] != 1:
+        return None
+
+    _, num_heads, q_len, head_dim = query_states.shape
+    if int(q_len) != 1:
+        return None
+
+    kv_len = int(key_cache.current_length.item())
+    old_len = int(key_cache.old_length(kv_len))
+    if kv_len <= 0 or old_len <= 0:
+        return None
+    if int(key_cache.hot_capacity) != int(value_cache.hot_capacity):
+        return None
+    if head_dim != int(key_cache.head_dim) or head_dim != int(value_cache.head_dim):
+        return None
+    if int(key_cache.num_heads) != int(value_cache.num_heads):
+        return None
+    if int(key_cache.num_heads) * int(num_key_value_groups) != int(num_heads):
+        return None
+
+    key_tensors = (
+        getattr(key_cache, "q_idx", None),
+        getattr(key_cache, "scale", None),
+        getattr(key_cache, "codebook", None),
+        getattr(key_cache, "rotation_t", None),
+        getattr(key_cache, "residual_sign_packed", None),
+        getattr(key_cache, "residual_norm", None),
+        getattr(key_cache, "residual_proj", None),
+        getattr(key_cache, "hot_data", None),
+    )
+    value_tensors = (
+        getattr(value_cache, "q_idx", None),
+        getattr(value_cache, "scale", None),
+        getattr(value_cache, "codebook", None),
+        getattr(value_cache, "rotation_t", None),
+        getattr(value_cache, "hot_data", None),
+    )
+    if not all(_is_cuda_tensor(tensor) for tensor in key_tensors + value_tensors):
+        return None
+
+    residual_dim = int(getattr(key_cache, "residual_dim", 0))
+    residual_packed_dim = int(getattr(key_cache, "residual_packed_dim", 0))
+    if residual_dim <= 0 or residual_packed_dim <= 0:
+        return None
+    if attention_mask is not None:
+        if not _is_cuda_tensor(attention_mask) or attention_mask.shape != (1, 1, 1, kv_len):
+            return None
+        attention_mask = attention_mask.contiguous()
+
+    block_d = triton.next_power_of_2(int(head_dim))
+    block_r = triton.next_power_of_2(residual_dim)
+    if block_d > 128 or block_r > 256:
+        return None
+
+    query_stride_h = int(query_states.stride(1))
+    query_stride_q = int(query_states.stride(2))
+    query_stride_d = int(query_states.stride(3))
+    output_getter = getattr(key_cache, "get_attention_output", None)
+    if output_getter is not None:
+        out = output_getter(query_states)
+    else:
+        out = torch.empty(
+            tuple(query_states.shape),
+            dtype=query_states.dtype,
+            device=query_states.device,
+        )
+    dummy_mask = query_states
+    mask_ptr = attention_mask if attention_mask is not None else dummy_mask
+    block_n = 16 if block_d >= 128 else (32 if block_r > 128 else 64)
+
+    try:
+        _turbo_vq_hybrid_attention_decode_kernel[(int(num_heads),)](
+            query_states,
+            key_cache.q_idx.contiguous(),
+            key_cache.scale.contiguous(),
+            key_cache.codebook.contiguous(),
+            key_cache.rotation_t.contiguous(),
+            key_cache.residual_sign_packed.contiguous(),
+            key_cache.residual_norm.contiguous(),
+            key_cache.residual_proj.contiguous(),
+            value_cache.q_idx.contiguous(),
+            value_cache.scale.contiguous(),
+            value_cache.codebook.contiguous(),
+            value_cache.rotation_t.contiguous(),
+            key_cache.hot_data.contiguous(),
+            value_cache.hot_data.contiguous(),
+            mask_ptr,
+            out,
+            kv_len,
+            old_len,
+            query_stride_h,
+            query_stride_q,
+            query_stride_d,
+            max_length=int(key_cache.max_length),
+            hot_capacity=int(key_cache.hot_capacity),
+            num_key_value_groups=int(num_key_value_groups),
+            head_dim=int(head_dim),
+            residual_dim=residual_dim,
+            residual_packed_dim=residual_packed_dim,
+            residual_coeff=float(key_cache.residual_coeff),
+            sm_scale=float(sm_scale),
+            has_mask=attention_mask is not None,
+            BLOCK_N=block_n,
+            BLOCK_D=block_d,
+            BLOCK_R=block_r,
+            num_warps=4,
+        )
     except Exception:
         return None
     return out

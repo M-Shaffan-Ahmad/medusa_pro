@@ -1,0 +1,117 @@
+prompt,mode,tokens,prompt_tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_vs_base,text
+hpc,medusa_base,181,34,1.8431568010000774,0.03496980799991434,98.20108625689974,2856.25439453125,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,turbo_force_fast_fulltree,181,34,1.75155365000046,0.034468026000467944,103.33682899176537,2751.46337890625,2830.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,turbo_node_budget_40_qjl,181,34,2.1207954790006625,0.03492009100045834,85.34533470680954,2751.46484375,2830.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,turbo_node_budget_32_qjl,181,34,1.7958314159996007,0.03429057100038335,100.7889707170822,2751.46484375,2830.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+systems,medusa_base,210,28,1.8558833839997533,0.03763092899953335,113.15366138329945,2856.2568359375,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of"
+systems,turbo_force_fast_fulltree,210,28,1.7620818099994722,0.033229269000003114,119.17721345756523,2749.60791015625,2830.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of"
+systems,turbo_node_budget_40_qjl,203,28,1.8551074289998724,0.03451973699975497,109.4276249594028,2749.609375,2832.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number"
+systems,turbo_node_budget_32_qjl,203,28,1.8413367679995645,0.03370839199942566,110.24599276347476,2749.6513671875,2832.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number"
+medium_context,medusa_base,139,965,1.7446917719998964,0.19219532199986133,79.67023300664036,3244.81396484375,3384.0,1.0,"1. Cache locality:
+- Ensure that cache lines are aligned with the cache line size.
+- Use cache-coherent memory access.
+- Use cache-coherent memory access for shared data.
+- Use cache-coherent memory access for data that is accessed frequently.
+- Use cache-coherent memory access for data that is accessed infrequently.
+
+2. NUMA placement:
+- Use NUMA to distribute data and compute resources.
+- Use NUMA to distribute data and compute resources for shared data.
+- Use NUMA to distribute data and compute resources for"
+medium_context,turbo_force_fast_fulltree,139,965,1.690182872999685,0.19262951600012457,82.23962165307417,3244.81396484375,3382.0,1.0,"1. Cache locality:
+- Ensure that cache lines are aligned with the cache line size.
+- Use cache-coherent memory access.
+- Use cache-coherent memory access for shared data.
+- Use cache-coherent memory access for data that is accessed frequently.
+- Use cache-coherent memory access for data that is accessed infrequently.
+
+2. NUMA placement:
+- Use NUMA to distribute data and compute resources.
+- Use NUMA to distribute data and compute resources for shared data.
+- Use NUMA to distribute data and compute resources for"
+medium_context,turbo_node_budget_40_qjl,139,965,1.709388898000725,0.19401841500075534,81.31560943362406,3244.81396484375,3384.0,1.0,"1. Cache locality:
+- Ensure that cache lines are aligned with the cache line size.
+- Use cache-coherent memory access.
+- Use cache-coherent memory access for shared data.
+- Use cache-coherent memory access for data that is accessed frequently.
+- Use cache-coherent memory access for data that is accessed infrequently.
+
+2. NUMA placement:
+- Use NUMA to distribute data and compute resources.
+- Use NUMA to distribute data and compute resources for shared data.
+- Use NUMA to distribute data and compute resources for"
+medium_context,turbo_node_budget_32_qjl,139,965,1.7261731190001228,0.19397973899958743,80.52494762548211,3244.8232421875,3384.0,1.0,"1. Cache locality:
+- Ensure that cache lines are aligned with the cache line size.
+- Use cache-coherent memory access.
+- Use cache-coherent memory access for shared data.
+- Use cache-coherent memory access for data that is accessed frequently.
+- Use cache-coherent memory access for data that is accessed infrequently.
+
+2. NUMA placement:
+- Use NUMA to distribute data and compute resources.
+- Use NUMA to distribute data and compute resources for shared data.
+- Use NUMA to distribute data and compute resources for"

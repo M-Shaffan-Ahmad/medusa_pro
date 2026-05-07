@@ -409,6 +409,217 @@ class TurboQuantizedKVCache:
         return self._decode_range(0, end)
 
 
+class HybridTurboVQKVCache:
+    """
+    Hybrid TurboVQ KV cache:
+    - all logical positions are stored in the compressed TurboVQ cache
+    - the most recent `hot_window` positions are also kept exactly in FP16/BF16
+    - tree verification can materialize old compressed KV + exact hot KV for SDPA
+    - q_len=1 decode can use a fused hybrid Triton attention kernel
+    """
+
+    is_hybrid_turbo_vq = True
+
+    def __init__(
+        self,
+        batch_size: int,
+        num_heads: int,
+        max_length: int,
+        head_dim: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        current_length: torch.Tensor,
+        bits: int = 8,
+        residual_dim: int = 128,
+        residual_scale: float = 1.0,
+        hot_window: int = 512,
+    ):
+        self.compressed_cache = TurboQuantizedKVCache(
+            batch_size=batch_size,
+            num_heads=num_heads,
+            max_length=max_length,
+            head_dim=head_dim,
+            device=device,
+            dtype=dtype,
+            current_length=current_length,
+            bits=bits,
+            residual_dim=residual_dim,
+            residual_scale=residual_scale,
+            runtime_dequant_cache=False,
+        )
+        self.batch_size = batch_size
+        self.num_heads = num_heads
+        self.max_length = max_length
+        self.head_dim = head_dim
+        self.device = device
+        self.dtype = dtype
+        self.current_length = current_length
+        self.hot_capacity = int(max(1, min(int(hot_window), int(max_length))))
+        self.hot_window = self.hot_capacity
+        self.dequant_data = None
+
+        # Expose compressed tensors/metadata so the existing fused kernels can
+        # consume this cache without unpacking the wrapper.
+        self.bits = self.compressed_cache.bits
+        self.levels = self.compressed_cache.levels
+        self.residual_dim = self.compressed_cache.residual_dim
+        self.residual_packed_dim = self.compressed_cache.residual_packed_dim
+        self.residual_scale = self.compressed_cache.residual_scale
+        self.residual_coeff = self.compressed_cache.residual_coeff
+        self.rotation = self.compressed_cache.rotation
+        self.rotation_t = self.compressed_cache.rotation_t
+        self.codebook = self.compressed_cache.codebook
+        self.boundaries = self.compressed_cache.boundaries
+        self.residual_proj = self.compressed_cache.residual_proj
+        self.q_idx = self.compressed_cache.q_idx
+        self.scale = self.compressed_cache.scale
+        self.residual_sign_packed = self.compressed_cache.residual_sign_packed
+        self.residual_norm = self.compressed_cache.residual_norm
+        self.residual_bit_shifts = self.compressed_cache.residual_bit_shifts
+        self.residual_pack_weights = self.compressed_cache.residual_pack_weights
+
+        self.hot_data = torch.zeros(
+            batch_size,
+            num_heads,
+            self.hot_capacity,
+            head_dim,
+            dtype=dtype,
+            device=device,
+        )
+        self._hot_positions = torch.full((self.hot_capacity,), -1, dtype=torch.long)
+        self._attention_out_cache = {}
+
+    @property
+    def shape(self):
+        return (
+            self.batch_size,
+            self.num_heads,
+            int(self.current_length.item()),
+            self.head_dim,
+        )
+
+    def get_attention_output(self, query_states: torch.Tensor) -> torch.Tensor:
+        key = (tuple(query_states.shape), query_states.dtype)
+        cached = self._attention_out_cache.get(key)
+        if cached is None:
+            cached = torch.empty(
+                tuple(query_states.shape),
+                dtype=query_states.dtype,
+                device=query_states.device,
+            )
+            self._attention_out_cache[key] = cached
+        return cached
+
+    def old_length(self, kv_len: int = None) -> int:
+        if kv_len is None:
+            kv_len = int(self.current_length.item())
+        return max(0, int(kv_len) - self.hot_capacity)
+
+    def _record_hot_slice(self, tensor: torch.Tensor, start: int):
+        input_len = int(tensor.shape[2])
+        if input_len <= 0:
+            return
+        if start == 0:
+            self._hot_positions.fill_(-1)
+
+        copy_len = min(input_len, self.hot_capacity)
+        copy_start = input_len - copy_len
+        positions = torch.arange(
+            int(start) + copy_start,
+            int(start) + input_len,
+            device=self.device,
+            dtype=torch.long,
+        )
+        slots = torch.remainder(positions, self.hot_capacity)
+        src = tensor[:, :, copy_start:].to(dtype=self.dtype)
+        self.hot_data.index_copy_(2, slots, src)
+        self._hot_positions[slots.detach().cpu()] = positions.detach().cpu()
+
+    def _range_is_hot_exact(self, start: int, end: int) -> bool:
+        length = int(end) - int(start)
+        if length < 0 or length > self.hot_capacity:
+            return False
+        for pos in range(int(start), int(end)):
+            slot = pos % self.hot_capacity
+            if int(self._hot_positions[slot].item()) != pos:
+                return False
+        return True
+
+    def _gather_hot_range(self, start: int, end: int, out: torch.Tensor = None):
+        slots = torch.arange(
+            int(start),
+            int(end),
+            device=self.device,
+            dtype=torch.long,
+        ).remainder_(self.hot_capacity)
+        hot = self.hot_data.index_select(2, slots)
+        if out is None:
+            return hot
+        out.copy_(hot, non_blocking=True)
+        return out
+
+    def _overlay_hot_range(self, out: torch.Tensor, start: int, end: int):
+        valid_slots = []
+        rel_positions = []
+        for slot, pos_tensor in enumerate(self._hot_positions.tolist()):
+            pos = int(pos_tensor)
+            if int(start) <= pos < int(end):
+                valid_slots.append(slot)
+                rel_positions.append(pos - int(start))
+        if not valid_slots:
+            return out
+
+        order = sorted(range(len(rel_positions)), key=rel_positions.__getitem__)
+        slots = torch.tensor([valid_slots[i] for i in order], device=self.device, dtype=torch.long)
+        rel = torch.tensor([rel_positions[i] for i in order], device=self.device, dtype=torch.long)
+        hot = self.hot_data.index_select(2, slots)
+        out.index_copy_(2, rel, hot)
+        return out
+
+    def append_compressed(self, tensor: torch.Tensor, dim: int = 2):
+        if dim != 2:
+            raise ValueError("HybridTurboVQKVCache.append_compressed currently supports dim=2 only.")
+        start, end = self.compressed_cache.append_compressed(tensor, dim=dim)
+        self._record_hot_slice(tensor, start)
+        return start, end
+
+    def copy(self, indices: torch.Tensor, prev_length: int, dim: int = 2):
+        if dim != 2:
+            raise ValueError("HybridTurboVQKVCache.copy currently supports dim=2 only.")
+        source_positions = [int(x) for x in indices.detach().cpu().tolist()]
+        self.compressed_cache.copy(indices, prev_length, dim=dim)
+
+        if prev_length == 0:
+            self._hot_positions.fill_(-1)
+
+        for offset, src_pos in enumerate(source_positions):
+            dst_pos = int(prev_length) + int(offset)
+            dst_slot = dst_pos % self.hot_capacity
+            src_slot = src_pos % self.hot_capacity
+            if int(self._hot_positions[src_slot].item()) == src_pos:
+                src = self.hot_data[:, :, src_slot : src_slot + 1]
+            else:
+                # Rare fallback for a copied source outside the exact hot window.
+                # The accepted Medusa branch is normally hot, but this keeps the
+                # cache structurally valid if a custom tree reaches farther back.
+                src = self.compressed_cache._decode_range(src_pos, src_pos + 1)
+            self.hot_data[:, :, dst_slot : dst_slot + 1].copy_(src, non_blocking=True)
+            self._hot_positions[dst_slot] = dst_pos
+
+    def _decode_range(self, start: int, end: int, out: torch.Tensor = None) -> torch.Tensor:
+        if self._range_is_hot_exact(start, end):
+            return self._gather_hot_range(start, end, out=out)
+
+        decoded = self.compressed_cache._decode_range(start, end, out=out)
+        return self._overlay_hot_range(decoded, start, end)
+
+    def cat(self, tensor: torch.Tensor, dim: int = 2):
+        if dim != 2:
+            raise ValueError("HybridTurboVQKVCache.cat currently supports dim=2 only.")
+        _, end = self.append_compressed(tensor, dim=dim)
+        return self._decode_range(0, end)
+
+
 def turbo_vq_attention_with_qjl_residual(
     query_states: torch.Tensor,
     key_cache: TurboQuantizedKVCache,
@@ -731,6 +942,7 @@ def initialize_past_key_values(
     turbo_vq_key_bits=None,
     turbo_vq_residual_dim: int = 128,
     turbo_vq_residual_scale: float = 1.0,
+    turbo_hybrid_hot_window: int = 512,
     turbo_runtime_dequant_cache: bool = True,
     turbo_compile_decode: bool = False,
 ):
@@ -740,14 +952,28 @@ def initialize_past_key_values(
     num_kv_heads = config.num_key_value_heads
     head_dim = config.hidden_size // config.num_attention_heads
 
+    def _cache_device_for_layer(layer_idx: int):
+        layers = getattr(getattr(model, "model", None), "layers", None)
+        if layers is not None and layer_idx < len(layers):
+            try:
+                device = next(layers[layer_idx].parameters()).device
+                return torch.device("cpu") if device.type == "meta" else device
+            except StopIteration:
+                pass
+        return model.device
+
+    layer_devices = [_cache_device_for_layer(i) for i in range(num_layers)]
+
     current_length_data = torch.zeros(num_layers * 2, dtype=torch.long, device="cpu")
     past_key_values = []
 
     if turbo_quant:
         past_key_values_data = None
         quant_mode = str(turbo_kv_quant_mode).lower()
-        if quant_mode not in {"polar", "turbo_vq"}:
-            raise ValueError("turbo_kv_quant_mode must be 'polar' or 'turbo_vq'.")
+        if quant_mode not in {"polar", "turbo_vq", "hybrid_turbo_vq"}:
+            raise ValueError(
+                "turbo_kv_quant_mode must be 'polar', 'turbo_vq', or 'hybrid_turbo_vq'."
+            )
         effective_vq_key_bits = (
             int(turbo_vq_bits)
             if turbo_vq_key_bits is None
@@ -757,14 +983,30 @@ def initialize_past_key_values(
             layer_caches = []
             for j in range(2):
                 idx = i * 2 + j
-                if quant_mode == "turbo_vq":
+                if quant_mode == "hybrid_turbo_vq":
+                    layer_caches.append(
+                        HybridTurboVQKVCache(
+                            batch_size=batch_size,
+                            num_heads=num_kv_heads,
+                            max_length=safe_max_length,
+                            head_dim=head_dim,
+                            device=layer_devices[i],
+                            dtype=model.dtype,
+                            current_length=current_length_data[idx],
+                            bits=effective_vq_key_bits if j == 0 else turbo_vq_bits,
+                            residual_dim=turbo_vq_residual_dim if j == 0 else 0,
+                            residual_scale=turbo_vq_residual_scale if j == 0 else 1.0,
+                            hot_window=turbo_hybrid_hot_window,
+                        )
+                    )
+                elif quant_mode == "turbo_vq":
                     layer_caches.append(
                         TurboQuantizedKVCache(
                             batch_size=batch_size,
                             num_heads=num_kv_heads,
                             max_length=safe_max_length,
                             head_dim=head_dim,
-                            device=model.device,
+                            device=layer_devices[i],
                             dtype=model.dtype,
                             current_length=current_length_data[idx],
                             bits=effective_vq_key_bits if j == 0 else turbo_vq_bits,
@@ -780,7 +1022,7 @@ def initialize_past_key_values(
                             num_heads=num_kv_heads,
                             max_length=safe_max_length,
                             head_dim=head_dim,
-                            device=model.device,
+                            device=layer_devices[i],
                             dtype=model.dtype,
                             current_length=current_length_data[idx],
                             radius_bits=turbo_radius_bits,
@@ -790,6 +1032,26 @@ def initialize_past_key_values(
                         )
                     )
             past_key_values.append(layer_caches)
+        return past_key_values, past_key_values_data, current_length_data
+
+    if len({str(device) for device in layer_devices}) > 1:
+        past_key_values_data = None
+        for i in range(num_layers):
+            layer_data = torch.zeros(
+                2,
+                batch_size,
+                num_kv_heads,
+                safe_max_length,
+                head_dim,
+                device=layer_devices[i],
+                dtype=model.dtype,
+            )
+            past_key_values.append(
+                [
+                    KVCache(layer_data[j], current_length_data[i * 2 + j])
+                    for j in range(2)
+                ]
+            )
         return past_key_values, past_key_values_data, current_length_data
 
     past_key_values_data = torch.zeros(

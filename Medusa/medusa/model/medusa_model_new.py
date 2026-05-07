@@ -363,6 +363,14 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_fallback_full_tree=True,
         turbo_fallback_accept_threshold=0,
         turbo_prune_confidence_margin=1.0,
+        turbo_prune_prescreen_margin=0.75,
+        turbo_prune_min_fraction=0.25,
+        turbo_prune_min_node_fraction=0.30,
+        turbo_prune_node_budget=0,
+        turbo_prune_decisive_margin=1.5,
+        turbo_prune_decisive_keep=8,
+        turbo_prune_use_qjl=True,
+        turbo_force_full_tree_fast_verifier=False,
         turbo_skip_threshold_high=1.1,
         turbo_skip_threshold_low=-0.1,
         turbo_kv_max_length=2048,
@@ -373,6 +381,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_vq_key_bits=None,
         turbo_vq_residual_dim=128,
         turbo_vq_residual_scale=1.0,
+        turbo_hybrid_hot_window=512,
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
         turbo_qjl_dim=128,
@@ -400,12 +409,33 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 fallback only when pruning finds no extra token beyond the greedy root.
             turbo_prune_confidence_margin (float, optional): If the pass-1 margin is smaller than
                 this fraction of score stddev, skip pruning and verify the full tree immediately.
+            turbo_prune_prescreen_margin (float, optional): Cheap Medusa-only margin gate run
+                before QJL. Flat scores skip QJL and verify the full tree immediately.
+                Set negative to disable.
+            turbo_prune_min_fraction (float, optional): Minimum fraction of candidate paths
+                that pruning must remove before using the pruned verifier. If the selected
+                path set is too close to the full tree, the code skips pruning.
+            turbo_prune_min_node_fraction (float, optional): Minimum fraction of unique
+                Medusa tree nodes that must be removed before launching the pruned verifier.
+                This catches cases where path pruning still leaves a nearly full tree block.
+            turbo_prune_node_budget (int, optional): Maximum unique Medusa tree nodes to keep
+                when selecting paths. `0` disables node-budget selection.
+            turbo_prune_decisive_margin (float, optional): If the cheap Medusa-only path
+                margin exceeds this multiple of score stddev, skip QJL and use a smaller
+                verifier tree immediately. Set negative to disable.
+            turbo_prune_decisive_keep (int, optional): Path budget used by the decisive
+                Medusa-only fast path.
+            turbo_prune_use_qjl (bool, optional): Enable the 1-bit/QJL side signal for path
+                scoring after the cheap Medusa prescreen passes.
+            turbo_force_full_tree_fast_verifier (bool, optional): Skip Turbo pruning/planning
+                entirely and use the greedy full-tree verifier fast path when `temperature=0`.
             turbo_skip_threshold_high (float, optional): If pass-1 top prob exceeds this, skip pass-2 and accept one token.
             turbo_skip_threshold_low (float, optional): If pass-1 top prob is below this, skip pass-2 and do greedy one token.
             turbo_kv_max_length (int, optional): Maximum cache length for KV pre-allocation.
             turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for the
-                previous polar-inspired cache or "turbo_vq" for random-rotation Lloyd-Max
-                TurboQuant MSE-stage vector quantization.
+                previous polar-inspired cache, "turbo_vq" for strict random-rotation
+                Lloyd-Max TurboQuant KV, or "hybrid_turbo_vq" for exact hot-window KV
+                plus compressed older KV.
             turbo_radius_bits (int, optional): Radius quantization bits for polar KV.
             turbo_theta_bits (int, optional): Angle quantization bits for polar KV.
             turbo_vq_bits (int, optional): Scalar Lloyd-Max bits for "turbo_vq" KV compression.
@@ -417,6 +447,9 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             turbo_vq_residual_scale (float, optional): Multiplier for the residual-QJL
                 correction. `1.0` is the unbiased estimator; lower values can dampen
                 sketch variance during calibration.
+            turbo_hybrid_hot_window (int, optional): Exact recent-KV window for
+                `turbo_kv_quant_mode="hybrid_turbo_vq"`. Older positions remain
+                compressed and are decoded only when the SDPA verifier needs them.
             turbo_runtime_dequant_cache (bool, optional): Keep an incremental dequantized shadow cache
                 for fast attention when polar compression is enabled. Set False to use the
                 direct compressed-KV Triton attention path instead of materializing FP16 K/V.
@@ -475,6 +508,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     and getattr(self, "kv_cache_vq_key_bits", None) == effective_turbo_vq_key_bits
                     and getattr(self, "kv_cache_vq_residual_dim", None) == turbo_vq_residual_dim
                     and getattr(self, "kv_cache_vq_residual_scale", None) == float(turbo_vq_residual_scale)
+                    and getattr(self, "kv_cache_hybrid_hot_window", None) == int(turbo_hybrid_hot_window)
                     and getattr(self, "kv_runtime_dequant_cache", None) == turbo_runtime_dequant_cache
                     and getattr(self, "kv_compile_decode", None) == turbo_compile_decode
                 )
@@ -504,6 +538,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 turbo_vq_key_bits=effective_turbo_vq_key_bits,
                 turbo_vq_residual_dim=turbo_vq_residual_dim,
                 turbo_vq_residual_scale=turbo_vq_residual_scale,
+                turbo_hybrid_hot_window=turbo_hybrid_hot_window,
                 turbo_runtime_dequant_cache=turbo_runtime_dequant_cache,
                 turbo_compile_decode=turbo_compile_decode,
             )
@@ -518,6 +553,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             self.kv_cache_vq_key_bits = effective_turbo_vq_key_bits
             self.kv_cache_vq_residual_dim = turbo_vq_residual_dim
             self.kv_cache_vq_residual_scale = float(turbo_vq_residual_scale)
+            self.kv_cache_hybrid_hot_window = int(turbo_hybrid_hot_window)
             self.kv_runtime_dequant_cache = turbo_runtime_dequant_cache
             self.kv_compile_decode = turbo_compile_decode
 
@@ -526,7 +562,7 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
         turbo_pruned_layout_cache = self.turbo_pruned_layout_cache if turbo_quant else None
         embed_weight = None
         qjl_scorer = None
-        if turbo_quant:
+        if turbo_quant and turbo_prune_use_qjl and not turbo_force_full_tree_fast_verifier:
             lm_head = getattr(self.base_model, "lm_head", None)
             embed_weight = getattr(lm_head, "weight", None)
             if embed_weight is None or not embed_weight.dtype.is_floating_point:
@@ -581,28 +617,42 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             )
 
             if turbo_quant:
-                approx_scores, _, selected_paths, verify_full_tree = plan_turbo_pruning(
-                    medusa_logits,
-                    logits,
-                    medusa_buffers["tree_indices"],
-                    medusa_buffers["retrieve_indices"],
-                    candidates=candidates,
-                    query_state=query_state,
-                    qjl_scorer=qjl_scorer,
-                    embed_weight=embed_weight,
-                    keep_target=turbo_prune_keep,
-                    min_keep=turbo_prune_min,
-                    max_keep=turbo_prune_max,
-                    margin_scale=turbo_prune_confidence_margin,
-                )
-                use_skip_gating = (
-                    (0.0 <= turbo_skip_threshold_high <= 1.0)
-                    or (0.0 <= turbo_skip_threshold_low <= 1.0)
-                )
-                approx_top_prob = None
-                if use_skip_gating:
-                    approx_probs = torch.softmax(approx_scores, dim=0)
-                    approx_top_prob = float(approx_probs.max().item())
+                if turbo_force_full_tree_fast_verifier:
+                    approx_scores = None
+                    selected_paths = None
+                    verify_full_tree = True
+                    use_skip_gating = False
+                    approx_top_prob = None
+                else:
+                    approx_scores, _, selected_paths, verify_full_tree = plan_turbo_pruning(
+                        medusa_logits,
+                        logits,
+                        medusa_buffers["tree_indices"],
+                        medusa_buffers["retrieve_indices"],
+                        candidates=candidates,
+                        query_state=query_state,
+                        qjl_scorer=qjl_scorer,
+                        embed_weight=embed_weight,
+                        keep_target=turbo_prune_keep,
+                        min_keep=turbo_prune_min,
+                        max_keep=turbo_prune_max,
+                        margin_scale=turbo_prune_confidence_margin,
+                        prescreen_margin_scale=turbo_prune_prescreen_margin,
+                        min_prune_fraction=turbo_prune_min_fraction,
+                        min_node_prune_fraction=turbo_prune_min_node_fraction,
+                        node_budget=turbo_prune_node_budget,
+                        decisive_margin_scale=turbo_prune_decisive_margin,
+                        decisive_keep=turbo_prune_decisive_keep,
+                        use_qjl=turbo_prune_use_qjl,
+                    )
+                    use_skip_gating = (
+                        (0.0 <= turbo_skip_threshold_high <= 1.0)
+                        or (0.0 <= turbo_skip_threshold_low <= 1.0)
+                    )
+                    approx_top_prob = None
+                    if use_skip_gating:
+                        approx_probs = torch.softmax(approx_scores, dim=0)
+                        approx_top_prob = float(approx_probs.max().item())
 
                 if use_skip_gating and (
                     approx_top_prob >= turbo_skip_threshold_high
@@ -638,69 +688,28 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                         break
                     continue
 
+                use_tree_update = False
                 if verify_full_tree:
-                    medusa_logits, logits, outputs, tree_hidden = tree_decoding(
-                        self,
-                        tree_candidates,
-                        past_key_values,
-                        medusa_buffers["medusa_position_ids"],
-                        input_ids,
-                        medusa_buffers["retrieve_indices"],
-                        medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
-                        return_hidden=True,
-                    )
-                    best_candidate, accept_length = evaluate_posterior(
-                        logits,
-                        candidates,
-                        temperature,
-                        posterior_threshold,
-                        posterior_alpha,
-                        top_p=top_p,
-                        sampling=sampling,
-                        fast=fast,
-                        path_lengths=full_path_lengths,
-                    )
-                    update_candidates = candidates
-                    update_retrieve_indices = medusa_buffers["retrieve_indices"]
-                else:
-                    pruned = build_cached_pruned_medusa_buffers(
-                        tree_candidates,
-                        medusa_buffers["retrieve_indices"],
-                        medusa_buffers["medusa_position_ids"],
-                        medusa_buffers["medusa_attn_mask"],
-                        selected_paths,
-                        layout_cache=turbo_pruned_layout_cache,
-                    )
-
-                    medusa_logits, logits, outputs, tree_hidden = tree_decoding(
-                        self,
-                        pruned["tree_candidates"],
-                        past_key_values,
-                        pruned["medusa_position_ids"],
-                        input_ids,
-                        pruned["retrieve_indices"],
-                        medusa_attn_mask=pruned["medusa_attn_mask"],
-                        return_hidden=True,
-                    )
-                    best_candidate, accept_length = evaluate_posterior(
-                        logits,
-                        pruned["candidates"],
-                        temperature,
-                        posterior_threshold,
-                        posterior_alpha,
-                        top_p=top_p,
-                        sampling=sampling,
-                        fast=fast,
-                        path_lengths=pruned["path_lengths"],
-                    )
-                    pruned_accept_length = int(
-                        accept_length.item() if torch.is_tensor(accept_length) else accept_length
-                    )
-                    if (
-                        turbo_fallback_full_tree
-                        and pruned_accept_length <= int(turbo_fallback_accept_threshold)
-                    ):
-                        current_length_data.fill_(input_ids.shape[1])
+                    if temperature == 0:
+                        medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                            self,
+                            tree_candidates,
+                            past_key_values,
+                            medusa_buffers["medusa_position_ids"],
+                            input_ids,
+                            medusa_buffers["retrieve_indices"],
+                            medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                            return_hidden=True,
+                            gather_paths=False,
+                        )
+                        best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                            logits,
+                            candidates,
+                            medusa_buffers["retrieve_indices"],
+                            path_lengths=full_path_lengths,
+                        )
+                        use_tree_update = True
+                    else:
                         medusa_logits, logits, outputs, tree_hidden = tree_decoding(
                             self,
                             tree_candidates,
@@ -722,29 +731,197 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                             fast=fast,
                             path_lengths=full_path_lengths,
                         )
+                    update_candidates = candidates
+                    update_retrieve_indices = medusa_buffers["retrieve_indices"]
+                else:
+                    pruned = build_cached_pruned_medusa_buffers(
+                        tree_candidates,
+                        medusa_buffers["retrieve_indices"],
+                        medusa_buffers["medusa_position_ids"],
+                        medusa_buffers["medusa_attn_mask"],
+                        selected_paths,
+                        layout_cache=turbo_pruned_layout_cache,
+                        min_node_prune_fraction=turbo_prune_min_node_fraction,
+                    )
+
+                    if pruned is None:
+                        # Selected paths still retained most unique tree nodes, so a
+                        # pruned forward would save little while adding layout overhead.
+                        if temperature == 0:
+                            medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                self,
+                                tree_candidates,
+                                past_key_values,
+                                medusa_buffers["medusa_position_ids"],
+                                input_ids,
+                                medusa_buffers["retrieve_indices"],
+                                medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                                return_hidden=True,
+                                gather_paths=False,
+                            )
+                            best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                                logits,
+                                candidates,
+                                medusa_buffers["retrieve_indices"],
+                                path_lengths=full_path_lengths,
+                            )
+                            use_tree_update = True
+                        else:
+                            medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                self,
+                                tree_candidates,
+                                past_key_values,
+                                medusa_buffers["medusa_position_ids"],
+                                input_ids,
+                                medusa_buffers["retrieve_indices"],
+                                medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                                return_hidden=True,
+                            )
+                            best_candidate, accept_length = evaluate_posterior(
+                                logits,
+                                candidates,
+                                temperature,
+                                posterior_threshold,
+                                posterior_alpha,
+                                top_p=top_p,
+                                sampling=sampling,
+                                fast=fast,
+                                path_lengths=full_path_lengths,
+                            )
                         update_candidates = candidates
                         update_retrieve_indices = medusa_buffers["retrieve_indices"]
                     else:
-                        update_candidates = pruned["candidates"]
-                        update_retrieve_indices = pruned["retrieve_indices"]
+                        if temperature == 0:
+                            medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                self,
+                                pruned["tree_candidates"],
+                                past_key_values,
+                                pruned["medusa_position_ids"],
+                                input_ids,
+                                pruned["retrieve_indices"],
+                                medusa_attn_mask=pruned["medusa_attn_mask"],
+                                return_hidden=True,
+                                gather_paths=False,
+                            )
+                            best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                                logits,
+                                pruned["candidates"],
+                                pruned["retrieve_indices"],
+                                path_lengths=pruned["path_lengths"],
+                            )
+                            use_tree_update = True
+                        else:
+                            medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                self,
+                                pruned["tree_candidates"],
+                                past_key_values,
+                                pruned["medusa_position_ids"],
+                                input_ids,
+                                pruned["retrieve_indices"],
+                                medusa_attn_mask=pruned["medusa_attn_mask"],
+                                return_hidden=True,
+                            )
+                            best_candidate, accept_length = evaluate_posterior(
+                                logits,
+                                pruned["candidates"],
+                                temperature,
+                                posterior_threshold,
+                                posterior_alpha,
+                                top_p=top_p,
+                                sampling=sampling,
+                                fast=fast,
+                                path_lengths=pruned["path_lengths"],
+                            )
+                        pruned_accept_length = int(
+                            accept_length.item() if torch.is_tensor(accept_length) else accept_length
+                        )
+                        if (
+                            turbo_fallback_full_tree
+                            and pruned_accept_length <= int(turbo_fallback_accept_threshold)
+                        ):
+                            current_length_data.fill_(input_ids.shape[1])
+                            if temperature == 0:
+                                medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                    self,
+                                    tree_candidates,
+                                    past_key_values,
+                                    medusa_buffers["medusa_position_ids"],
+                                    input_ids,
+                                    medusa_buffers["retrieve_indices"],
+                                    medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                                    return_hidden=True,
+                                    gather_paths=False,
+                                )
+                                best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                                    logits,
+                                    candidates,
+                                    medusa_buffers["retrieve_indices"],
+                                    path_lengths=full_path_lengths,
+                                )
+                                use_tree_update = True
+                            else:
+                                medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                                    self,
+                                    tree_candidates,
+                                    past_key_values,
+                                    medusa_buffers["medusa_position_ids"],
+                                    input_ids,
+                                    medusa_buffers["retrieve_indices"],
+                                    medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                                    return_hidden=True,
+                                )
+                                best_candidate, accept_length = evaluate_posterior(
+                                    logits,
+                                    candidates,
+                                    temperature,
+                                    posterior_threshold,
+                                    posterior_alpha,
+                                    top_p=top_p,
+                                    sampling=sampling,
+                                    fast=fast,
+                                    path_lengths=full_path_lengths,
+                                )
+                            update_candidates = candidates
+                            update_retrieve_indices = medusa_buffers["retrieve_indices"]
+                        else:
+                            update_candidates = pruned["candidates"]
+                            update_retrieve_indices = pruned["retrieve_indices"]
 
-                input_ids, logits, medusa_logits, new_token = update_inference_inputs(
-                    input_ids,
-                    update_candidates,
-                    best_candidate,
-                    accept_length,
-                    update_retrieve_indices,
-                    outputs,
-                    logits,
-                    medusa_logits,
-                    new_token,
-                    past_key_values_data,
-                    current_length_data,
-                    past_key_values=past_key_values,
-                )
-                best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
-                accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
-                query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
+                if use_tree_update:
+                    input_ids, logits, medusa_logits, new_token = update_inference_inputs_from_tree(
+                        input_ids,
+                        update_candidates,
+                        best_candidate,
+                        accept_length,
+                        update_retrieve_indices,
+                        outputs,
+                        logits,
+                        medusa_logits,
+                        new_token,
+                        past_key_values_data,
+                        current_length_data,
+                        past_key_values=past_key_values,
+                    )
+                    node_idx = update_retrieve_indices[best_candidate, accept_length].reshape(1)
+                    query_state = tree_hidden.index_select(0, node_idx).detach()
+                else:
+                    input_ids, logits, medusa_logits, new_token = update_inference_inputs(
+                        input_ids,
+                        update_candidates,
+                        best_candidate,
+                        accept_length,
+                        update_retrieve_indices,
+                        outputs,
+                        logits,
+                        medusa_logits,
+                        new_token,
+                        past_key_values_data,
+                        current_length_data,
+                        past_key_values=past_key_values,
+                    )
+                    best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
+                    accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
+                    query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
             else:
                 medusa_logits, logits, outputs, tree_hidden = tree_decoding(
                     self,

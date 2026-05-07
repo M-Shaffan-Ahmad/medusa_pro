@@ -1,0 +1,76 @@
+prompt,mode,tokens,prompt_tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_vs_base,text
+hpc,medusa_base,104,33,0.912601,0.032074,113.959962,2853.697754,2964.000000,1.000000,"1. Introduction:
+GPU kernel fusion is a technique used in deep learning to parallelize the computation of a neural network. In this technique, multiple parallel computations are combined into a single computation using a GPU kernel. This allows the GPU to perform multiple computations simultaneously, which can lead to significant performance improvements.
+
+2. Autoregressive decoding:
+Autoregressive decoding is a type of recurrent neural network (RNN) that is used for speech recognition. In"
+hpc,prune_old_qjl_k12_rawscore,104,33,1.180032,0.033541,88.133234,2856.269043,2964.000000,1.000000,"1. Introduction:
+GPU kernel fusion is a technique used in deep learning to parallelize the computation of a neural network. In this technique, multiple parallel computations are combined into a single computation using a GPU kernel. This allows the GPU to perform multiple computations simultaneously, which can lead to significant performance improvements.
+
+2. Autoregressive decoding:
+Autoregressive decoding is a type of recurrent neural network (RNN) that is used for speech recognition. In"
+hpc,prune_prescreen_qjl_k12_rawscore,104,33,0.949421,0.033136,109.540499,2856.269043,2964.000000,1.000000,"1. Introduction:
+GPU kernel fusion is a technique used in deep learning to parallelize the computation of a neural network. In this technique, multiple parallel computations are combined into a single computation using a GPU kernel. This allows the GPU to perform multiple computations simultaneously, which can lead to significant performance improvements.
+
+2. Autoregressive decoding:
+Autoregressive decoding is a type of recurrent neural network (RNN) that is used for speech recognition. In"
+hpc,prune_prescreen_q64_k10_rawscore,104,33,1.021615,0.033613,101.799636,2853.729980,2964.000000,1.000000,"1. Introduction:
+GPU kernel fusion is a technique used in deep learning to parallelize the computation of a neural network. In this technique, multiple parallel computations are combined into a single computation using a GPU kernel. This allows the GPU to perform multiple computations simultaneously, which can lead to significant performance improvements.
+
+2. Autoregressive decoding:
+Autoregressive decoding is a type of recurrent neural network (RNN) that is used for speech recognition. In"
+hpc,prune_medusa_only_k10_rawscore,104,33,1.086474,0.040060,95.722523,2853.742188,2964.000000,1.000000,"1. Introduction:
+GPU kernel fusion is a technique used in deep learning to parallelize the computation of a neural network. In this technique, multiple parallel computations are combined into a single computation using a GPU kernel. This allows the GPU to perform multiple computations simultaneously, which can lead to significant performance improvements.
+
+2. Autoregressive decoding:
+Autoregressive decoding is a type of recurrent neural network (RNN) that is used for speech recognition. In"
+systems,medusa_base,99,27,0.925348,0.031769,106.986729,2853.735840,2962.000000,1.000000,"Strong scaling and weak scaling are two different approaches to scaling up a computer system to handle larger workloads.
+
+Strong scaling refers to scaling up the number of processors (CPUs) or cores on a single computer system. This approach is commonly used for high-performance computing (HPC) and data analytics applications. In strong scaling, the number of processors is increased to handle larger workloads, and the system is designed to handle multiple tasks simultaneously.
+
+"
+systems,prune_old_qjl_k12_rawscore,99,27,1.076087,0.034587,92.000036,2856.310547,3002.000000,1.000000,"Strong scaling and weak scaling are two different approaches to scaling up a computer system to handle larger workloads.
+
+Strong scaling refers to scaling up the number of processors (CPUs) or cores on a single computer system. This approach is commonly used for high-performance computing (HPC) and data analytics applications. In strong scaling, the number of processors is increased to handle larger workloads, and the system is designed to handle multiple tasks simultaneously.
+
+"
+systems,prune_prescreen_qjl_k12_rawscore,99,27,0.953122,0.032526,103.869155,2856.315430,2964.000000,1.000000,"Strong scaling and weak scaling are two different approaches to scaling up a computer system to handle larger workloads.
+
+Strong scaling refers to scaling up the number of processors (CPUs) or cores on a single computer system. This approach is commonly used for high-performance computing (HPC) and data analytics applications. In strong scaling, the number of processors is increased to handle larger workloads, and the system is designed to handle multiple tasks simultaneously.
+
+"
+systems,prune_prescreen_q64_k10_rawscore,99,27,0.967050,0.032576,102.373214,2853.776855,2964.000000,1.000000,"Strong scaling and weak scaling are two different approaches to scaling up a computer system to handle larger workloads.
+
+Strong scaling refers to scaling up the number of processors (CPUs) or cores on a single computer system. This approach is commonly used for high-performance computing (HPC) and data analytics applications. In strong scaling, the number of processors is increased to handle larger workloads, and the system is designed to handle multiple tasks simultaneously.
+
+"
+systems,prune_medusa_only_k10_rawscore,99,27,1.037341,0.032276,95.436329,2853.785156,2964.000000,1.000000,"Strong scaling and weak scaling are two different approaches to scaling up a computer system to handle larger workloads.
+
+Strong scaling refers to scaling up the number of processors (CPUs) or cores on a single computer system. This approach is commonly used for high-performance computing (HPC) and data analytics applications. In strong scaling, the number of processors is increased to handle larger workloads, and the system is designed to handle multiple tasks simultaneously.
+
+"
+medium_context,medusa_base,69,911,0.849097,0.182834,81.262782,3214.834473,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,prune_old_qjl_k12_rawscore,68,911,0.879312,0.182674,77.333225,3216.547363,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement"
+medium_context,prune_prescreen_qjl_k12_rawscore,69,911,0.872168,0.183915,79.113158,3216.561523,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,prune_prescreen_q64_k10_rawscore,69,911,0.887393,0.183084,77.755847,3214.848633,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
+medium_context,prune_medusa_only_k10_rawscore,69,911,0.920166,0.182058,74.986457,3214.856934,3340.000000,1.000000,"1. Implement NUMA-aware tiling to optimize memory access patterns for different workloads.
+2. Implement overlap communication with compute to reduce communication overhead.
+3. Implement cache blocking to improve memory access performance.
+4. Implement fused attention to improve memory access performance.
+5. Implement quant"
