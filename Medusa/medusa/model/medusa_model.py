@@ -118,6 +118,19 @@ def _load_medusa_head_state_dict(pretrained_model_name_or_path):
         return torch.load(filename, map_location="cpu")
 
 
+def _infer_medusa_num_heads_from_state_dict(state_dict, fallback):
+    head_ids = set()
+    for key in state_dict.keys():
+        parts = str(key).split(".")
+        if parts and parts[0] == "medusa_head":
+            parts = parts[1:]
+        if parts and parts[0].isdigit():
+            head_ids.add(int(parts[0]))
+    if not head_ids:
+        return int(fallback)
+    return max(head_ids) + 1
+
+
 def _compute_medusa_logits(model, hidden_states):
     if getattr(model, "medusa_head_uses_base_lm_head", False):
         medusa_hidden = torch.stack(
@@ -271,8 +284,12 @@ class MedusaModelABC(nn.Module):
             )
         except:
             config = MedusaConfig.from_pretrained(pretrained_model_name_or_path)
+            medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
             base_model_config = AutoConfig.from_pretrained(config.base_model_name_or_path)
-            base_model_config.medusa_num_heads = getattr(config, "medusa_num_heads", 5)
+            base_model_config.medusa_num_heads = _infer_medusa_num_heads_from_state_dict(
+                medusa_head_state_dict,
+                getattr(config, "medusa_num_heads", 5),
+            )
             base_model_config.medusa_num_layers = config.medusa_num_layers
             base_model_config.version = getattr(config, "version", None)
             base_model_config.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(config)
@@ -282,7 +299,6 @@ class MedusaModelABC(nn.Module):
                 **kwargs,
                 config=base_model_config,
             )
-            medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
             model.medusa_head.load_state_dict(medusa_head_state_dict, strict=False)
             return model
         
@@ -400,6 +416,7 @@ class MedusaModelABC(nn.Module):
         turbo_kv_qjl_min_kv_len=16384,
         turbo_kv_qjl_medusa_pool_fraction=0.70,
         turbo_kv_qjl_medusa_anchor_keep=2,
+        turbo_packed_kv_qjl_auto_disable_after=4,
         turbo_force_full_tree_fast_verifier=False,
         turbo_lazy_tree_medusa_logits=True,
         turbo_skip_threshold_high=1.1,
@@ -481,6 +498,9 @@ class MedusaModelABC(nn.Module):
             turbo_kv_qjl_medusa_anchor_keep (int, optional): Number of Medusa-prior best
                 paths forced into the survivor competition so the sketch cannot prune
                 obvious high-priority branches too early.
+            turbo_packed_kv_qjl_auto_disable_after (int, optional): In fallback-safe
+                packed KV-QJL mode, bypass pruning for the rest of the request after this
+                many consecutive pruned-tree fallbacks. Set 0 to disable.
             turbo_force_full_tree_fast_verifier (bool, optional): Skip Turbo pruning/planning
                 entirely and use the greedy full-tree verifier fast path when `temperature=0`.
             turbo_lazy_tree_medusa_logits (bool, optional): In greedy Turbo verification,
@@ -726,6 +746,7 @@ class MedusaModelABC(nn.Module):
                 "packed_kv_qjl_steps": 0,
                 "packed_kv_qjl_fallback_steps": 0,
                 "packed_kv_qjl_gated_steps": 0,
+                "packed_kv_qjl_auto_disable_events": 0,
             }
 
         def record_verifier(kind, nodes, paths=0):
@@ -758,10 +779,12 @@ class MedusaModelABC(nn.Module):
 
         planner_full_tree_streak = 0
         planner_bypass_pruning = False
+        packed_kv_qjl_fallback_streak = 0
 
         for idx in range(max_steps):
             if stats is not None:
                 stats["decode_steps"] += 1
+            used_packed_kv_qjl = False
             # Generate candidates with topk predictions from Medusa heads
             candidates, tree_candidates = generate_candidates(
                 medusa_logits,
@@ -1090,6 +1113,16 @@ class MedusaModelABC(nn.Module):
                             turbo_fallback_full_tree
                             and pruned_accept_length <= int(turbo_fallback_accept_threshold)
                         ):
+                            if used_packed_kv_qjl:
+                                packed_kv_qjl_fallback_streak += 1
+                                if (
+                                    int(turbo_packed_kv_qjl_auto_disable_after) > 0
+                                    and packed_kv_qjl_fallback_streak
+                                    >= int(turbo_packed_kv_qjl_auto_disable_after)
+                                ):
+                                    planner_bypass_pruning = True
+                                    if stats is not None:
+                                        stats["packed_kv_qjl_auto_disable_events"] += 1
                             # Pruning was too conservative for this step. Rewind the
                             # cache length and verify the full tree so accuracy/acceptance
                             # quality stays equivalent to Medusa base.
@@ -1141,6 +1174,8 @@ class MedusaModelABC(nn.Module):
                             update_candidates = candidates
                             update_retrieve_indices = medusa_buffers["retrieve_indices"]
                         else:
+                            if used_packed_kv_qjl:
+                                packed_kv_qjl_fallback_streak = 0
                             update_candidates = pruned["candidates"]
                             update_retrieve_indices = pruned["retrieve_indices"]
 
