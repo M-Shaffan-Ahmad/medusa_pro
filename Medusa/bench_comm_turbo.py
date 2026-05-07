@@ -25,6 +25,41 @@ BASE_PROMPTS = [
     ),
 ]
 
+GENERAL_PROMPTS = [
+    (
+        "chat",
+        "Give practical advice to a student who keeps procrastinating on a programming assignment.",
+    ),
+    (
+        "summarization",
+        "Summarize why renewable energy storage matters for electric grids in one compact paragraph.",
+    ),
+    (
+        "reasoning",
+        "A train leaves at 3 PM traveling 60 mph. Another leaves at 4 PM traveling 80 mph on the same route. When does the second catch the first?",
+    ),
+    (
+        "code",
+        "Write a small Python function that groups strings by their first letter and explain the edge cases.",
+    ),
+    (
+        "creative",
+        "Write a short atmospheric opening paragraph for a science fiction story set on a quiet moon base.",
+    ),
+    (
+        "instruction",
+        "Explain how to make a simple weekly study plan for learning machine learning while working part time.",
+    ),
+    (
+        "technical_qa",
+        "Explain the difference between latency and throughput using examples from web servers.",
+    ),
+    (
+        "comparison",
+        "Compare SQLite and PostgreSQL for a small analytics dashboard in practical terms.",
+    ),
+]
+
 LONG_CONTEXT_SEED = (
     "Cache locality, memory bandwidth, kernel launch overhead, branch prediction, "
     "NUMA placement, PCIe transfer, KV cache reuse, and asynchronous prefetching "
@@ -80,8 +115,15 @@ def estimate_ideal_turbo_vq_kv_mb(config, kv_len, bits=8, key_bits=None, residua
     return bytes_total / (1024**2)
 
 
-def build_prompts(long_repeat, long_only=False):
-    prompts = [] if long_only else list(BASE_PROMPTS)
+def build_prompts(long_repeat, long_only=False, prompt_suite="technical"):
+    if long_only:
+        prompts = []
+    elif prompt_suite == "general":
+        prompts = list(GENERAL_PROMPTS)
+    elif prompt_suite == "mixed":
+        prompts = list(BASE_PROMPTS) + list(GENERAL_PROMPTS)
+    else:
+        prompts = list(BASE_PROMPTS)
     if long_repeat > 0:
         prompts.append(
             (
@@ -106,6 +148,51 @@ def build_modes(args):
             },
         ),
         (
+            "turbo_best_full_tree_fused",
+            {
+                "turbo_quant": True,
+                "turbo_kv_compression": False,
+                "turbo_force_full_tree_fast_verifier": True,
+                "turbo_fused_lm_head_argmax": True,
+            },
+        ),
+        (
+            "turbo_fast_24",
+            {
+                "turbo_fast_preset": True,
+                "_use_model_choice_resolution": True,
+            },
+        ),
+        (
+            "turbo_auto",
+            {
+                "turbo_auto": True,
+                "turbo_adaptive_tree_confidence_threshold": args.adaptive_tree_confidence_threshold,
+                "turbo_adaptive_tree_check_interval": args.adaptive_tree_check_interval,
+                "turbo_adaptive_tree_accept_threshold": args.adaptive_tree_accept_threshold,
+                "_use_model_choice_resolution": True,
+            },
+        ),
+        (
+            "turbo_fast_24_fused",
+            {
+                "turbo_fast_preset": True,
+                "turbo_fused_lm_head_argmax": True,
+                "_use_model_choice_resolution": True,
+            },
+        ),
+        (
+            "turbo_adaptive_24_32",
+            {
+                "turbo_fast_preset": True,
+                "turbo_adaptive_tree": True,
+                "turbo_adaptive_tree_balanced_limit": 32,
+                "turbo_adaptive_tree_confidence_threshold": args.adaptive_tree_confidence_threshold,
+                "turbo_adaptive_tree_check_interval": args.adaptive_tree_check_interval,
+                "_use_model_choice_resolution": True,
+            },
+        ),
+        (
             f"qjl_prune_{node_budget_name}",
             {
                 "turbo_quant": True,
@@ -120,6 +207,14 @@ def build_modes(args):
                 "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
                 "turbo_prune_decisive_margin": args.prune_decisive_margin,
                 "turbo_prune_decisive_keep": args.prune_decisive_keep,
+                "turbo_fallback_accept_threshold": args.fallback_accept_threshold,
+                "turbo_prune_acceptance_prune_threshold": args.prune_acceptance_prune_threshold,
+                "turbo_prune_acceptance_keep_threshold": args.prune_acceptance_keep_threshold,
+                "turbo_prune_acceptance_dynamic": args.prune_acceptance_dynamic,
+                "turbo_prune_acceptance_dynamic_prune_min": args.prune_acceptance_dynamic_prune_min,
+                "turbo_prune_acceptance_dynamic_prune_max": args.prune_acceptance_dynamic_prune_max,
+                "turbo_prune_acceptance_dynamic_keep_min": args.prune_acceptance_dynamic_keep_min,
+                "turbo_prune_acceptance_dynamic_keep_max": args.prune_acceptance_dynamic_keep_max,
                 "turbo_prune_use_qjl": True,
                 "turbo_qjl_dim": args.qjl_dim,
             },
@@ -149,6 +244,14 @@ def build_modes(args):
                 "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
                 "turbo_prune_decisive_margin": args.prune_decisive_margin,
                 "turbo_prune_decisive_keep": args.prune_decisive_keep,
+                "turbo_fallback_accept_threshold": args.fallback_accept_threshold,
+                "turbo_prune_acceptance_prune_threshold": args.prune_acceptance_prune_threshold,
+                "turbo_prune_acceptance_keep_threshold": args.prune_acceptance_keep_threshold,
+                "turbo_prune_acceptance_dynamic": args.prune_acceptance_dynamic,
+                "turbo_prune_acceptance_dynamic_prune_min": args.prune_acceptance_dynamic_prune_min,
+                "turbo_prune_acceptance_dynamic_prune_max": args.prune_acceptance_dynamic_prune_max,
+                "turbo_prune_acceptance_dynamic_keep_min": args.prune_acceptance_dynamic_keep_min,
+                "turbo_prune_acceptance_dynamic_keep_max": args.prune_acceptance_dynamic_keep_max,
             },
         ),
         (
@@ -177,6 +280,14 @@ def build_modes(args):
                 "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
                 "turbo_prune_decisive_margin": args.prune_decisive_margin,
                 "turbo_prune_decisive_keep": args.prune_decisive_keep,
+                "turbo_fallback_accept_threshold": args.fallback_accept_threshold,
+                "turbo_prune_acceptance_prune_threshold": args.prune_acceptance_prune_threshold,
+                "turbo_prune_acceptance_keep_threshold": args.prune_acceptance_keep_threshold,
+                "turbo_prune_acceptance_dynamic": args.prune_acceptance_dynamic,
+                "turbo_prune_acceptance_dynamic_prune_min": args.prune_acceptance_dynamic_prune_min,
+                "turbo_prune_acceptance_dynamic_prune_max": args.prune_acceptance_dynamic_prune_max,
+                "turbo_prune_acceptance_dynamic_keep_min": args.prune_acceptance_dynamic_keep_min,
+                "turbo_prune_acceptance_dynamic_keep_max": args.prune_acceptance_dynamic_keep_max,
             },
         ),
         (
@@ -236,6 +347,14 @@ def build_modes(args):
                 "turbo_prune_min_node_fraction": args.prune_min_node_fraction,
                 "turbo_prune_decisive_margin": args.prune_decisive_margin,
                 "turbo_prune_decisive_keep": args.prune_decisive_keep,
+                "turbo_fallback_accept_threshold": args.fallback_accept_threshold,
+                "turbo_prune_acceptance_prune_threshold": args.prune_acceptance_prune_threshold,
+                "turbo_prune_acceptance_keep_threshold": args.prune_acceptance_keep_threshold,
+                "turbo_prune_acceptance_dynamic": args.prune_acceptance_dynamic,
+                "turbo_prune_acceptance_dynamic_prune_min": args.prune_acceptance_dynamic_prune_min,
+                "turbo_prune_acceptance_dynamic_prune_max": args.prune_acceptance_dynamic_prune_max,
+                "turbo_prune_acceptance_dynamic_keep_min": args.prune_acceptance_dynamic_keep_min,
+                "turbo_prune_acceptance_dynamic_keep_max": args.prune_acceptance_dynamic_keep_max,
                 "turbo_prune_use_qjl": True,
                 "turbo_qjl_dim": args.qjl_dim,
             },
@@ -258,14 +377,16 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
     stats = {}
     first = None
     call_kwargs = dict(kwargs)
+    use_model_choice_resolution = bool(call_kwargs.pop("_use_model_choice_resolution", False))
     call_kwargs["stream"] = args.stream
     call_kwargs["collect_stats"] = args.collect_stats
+    call_medusa_choices = None if use_model_choice_resolution else medusa_choices
 
     start = time.perf_counter()
     with torch.inference_mode():
         for out in model.medusa_generate(
             inputs.input_ids,
-            medusa_choices=medusa_choices,
+            medusa_choices=call_medusa_choices,
             temperature=0.0,
             max_steps=args.max_steps,
             sampling="typical",
@@ -331,6 +452,12 @@ def main():
     parser.add_argument("--kv-max-length", type=int, default=2048)
     parser.add_argument("--long-repeat", type=int, default=0)
     parser.add_argument("--long-only", action="store_true")
+    parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed"), default="technical")
+    parser.add_argument("--choice-max-depth", type=int, default=0)
+    parser.add_argument("--choice-limit", type=int, default=0)
+    parser.add_argument("--adaptive-tree-confidence-threshold", type=float, default=0.60)
+    parser.add_argument("--adaptive-tree-check-interval", type=int, default=4)
+    parser.add_argument("--adaptive-tree-accept-threshold", type=float, default=0.0)
     parser.add_argument("--hot-window", type=int, default=512)
     parser.add_argument("--node-budget", type=int, default=40)
     parser.add_argument("--prune-keep", type=int, default=16)
@@ -342,6 +469,14 @@ def main():
     parser.add_argument("--prune-min-node-fraction", type=float, default=0.15)
     parser.add_argument("--prune-decisive-margin", type=float, default=1.5)
     parser.add_argument("--prune-decisive-keep", type=int, default=8)
+    parser.add_argument("--fallback-accept-threshold", type=int, default=0)
+    parser.add_argument("--prune-acceptance-prune-threshold", type=float, default=0.0)
+    parser.add_argument("--prune-acceptance-keep-threshold", type=float, default=0.0)
+    parser.add_argument("--prune-acceptance-dynamic", action="store_true")
+    parser.add_argument("--prune-acceptance-dynamic-prune-min", type=float, default=0.10)
+    parser.add_argument("--prune-acceptance-dynamic-prune-max", type=float, default=0.45)
+    parser.add_argument("--prune-acceptance-dynamic-keep-min", type=float, default=0.45)
+    parser.add_argument("--prune-acceptance-dynamic-keep-max", type=float, default=0.70)
     parser.add_argument("--qjl-dim", type=int, default=64)
     parser.add_argument("--residual-dim", type=int, default=128)
     parser.add_argument("--kv-qjl-dim", type=int, default=128)
@@ -366,9 +501,12 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True
     model = MedusaModel.from_pretrained(args.model_dir, torch_dtype=torch.float16).to("cuda").eval()
     raw_choices = model.get_medusa_choice(model.base_model_name_or_path)
+    max_choice_depth = int(args.choice_max_depth) if int(args.choice_max_depth) > 0 else int(getattr(model, "medusa", 1))
     medusa_choices = [
-        tuple(path) for path in raw_choices if len(path) <= int(getattr(model, "medusa", 1))
+        tuple(path) for path in raw_choices if len(path) <= max_choice_depth
     ]
+    if int(args.choice_limit) > 0:
+        medusa_choices = medusa_choices[: int(args.choice_limit)]
     print(
         "model",
         args.model_dir,
@@ -382,7 +520,11 @@ def main():
         args.kv_max_length,
     )
 
-    prompts = build_prompts(args.long_repeat, long_only=args.long_only)
+    prompts = build_prompts(
+        args.long_repeat,
+        long_only=args.long_only,
+        prompt_suite=args.prompt_suite,
+    )
     modes = build_modes(args)
     if not modes:
         raise SystemExit("No modes selected.")

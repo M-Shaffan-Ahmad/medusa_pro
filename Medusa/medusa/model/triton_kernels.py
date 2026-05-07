@@ -200,6 +200,89 @@ if TRITON_AVAILABLE:
 
 
     @triton.jit
+    def _node_budget_select_kernel(
+        scores,
+        retrieve_indices,
+        mandatory_indices,
+        selected_out,
+        selected_count_out,
+        n_paths: tl.constexpr,
+        path_len: tl.constexpr,
+        full_node_count: tl.constexpr,
+        node_budget: tl.constexpr,
+        min_keep: tl.constexpr,
+        max_keep: tl.constexpr,
+        mandatory_count,
+        BLOCK_P: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
+        paths = tl.arange(0, BLOCK_P)
+        nodes = tl.arange(0, BLOCK_N)
+        path_mask = paths < n_paths
+        node_mask = nodes < full_node_count
+
+        selected_path_mask = paths < 0
+        selected_node_mask = nodes < 0
+        selected_count = tl.full((), 0, tl.int32)
+
+        for out_idx in tl.static_range(0, max_keep):
+            mandatory_pick = tl.load(
+                mandatory_indices + out_idx,
+                mask=out_idx < mandatory_count,
+                other=-1,
+            )
+            use_mandatory = (out_idx < mandatory_count) & (mandatory_pick >= 0) & (mandatory_pick < n_paths)
+
+            selected_node_count = tl.sum(selected_node_mask.to(tl.int32), axis=0)
+            path_node_mask = (paths[:, None] < 0) & (nodes[None, :] < 0)
+            for step in tl.static_range(0, path_len):
+                node_id = tl.load(
+                    retrieve_indices + paths * path_len + step,
+                    mask=path_mask,
+                    other=-1,
+                )
+                path_node_mask = path_node_mask | (
+                    path_mask[:, None]
+                    & node_mask[None, :]
+                    & (node_id[:, None] == nodes[None, :])
+                    & (node_id[:, None] >= 0)
+                )
+
+            new_node_mask = path_node_mask & (~selected_node_mask[None, :])
+            additional_nodes = tl.sum(new_node_mask.to(tl.int32), axis=1)
+            within_budget = (selected_node_count + additional_nodes) <= node_budget
+            allow_over_budget = selected_count < min_keep
+            selectable = path_mask & (~selected_path_mask) & (within_budget | allow_over_budget)
+            score_vals = tl.load(scores + paths, mask=path_mask, other=-float("inf"))
+            selectable_scores = tl.where(selectable, score_vals, -float("inf"))
+            best_val = tl.max(selectable_scores, axis=0)
+            best_idx = tl.min(
+                tl.where((selectable_scores == best_val) & path_mask, paths, BLOCK_P),
+                axis=0,
+            )
+            selected_idx = tl.where(use_mandatory, mandatory_pick, best_idx)
+            have_selection = use_mandatory | (best_val > -float("inf"))
+
+            selected_node_update = nodes < 0
+            for step in tl.static_range(0, path_len):
+                node_id = tl.load(
+                    retrieve_indices + selected_idx * path_len + step,
+                    mask=have_selection,
+                    other=-1,
+                )
+                selected_node_update = selected_node_update | (
+                    node_mask & (nodes == node_id) & (node_id >= 0)
+                )
+            selected_node_mask = selected_node_mask | selected_node_update
+            selected_path_mask = selected_path_mask | (paths == selected_idx)
+
+            tl.store(selected_out + out_idx, selected_idx, mask=have_selection)
+            selected_count += tl.where(have_selection, 1, 0)
+
+        tl.store(selected_count_out, selected_count)
+
+
+    @triton.jit
     def _materialize_pruned_medusa_kernel(
         full_tree_candidates,
         selected_nodes,
@@ -457,6 +540,140 @@ if TRITON_AVAILABLE:
 
         tl.store(best_candidate_out, best_idx)
         tl.store(accept_length_out, best_len)
+
+
+    @triton.jit
+    def _lm_head_argmax_partial_kernel(
+        hidden_states,
+        lm_head_weight,
+        partial_vals,
+        partial_ids,
+        num_vocab_blocks: tl.constexpr,
+        vocab_size: tl.constexpr,
+        hidden_size: tl.constexpr,
+        BLOCK_V: tl.constexpr,
+        BLOCK_H: tl.constexpr,
+    ):
+        node_id = tl.program_id(0)
+        vocab_block = tl.program_id(1)
+        vocab_offsets = vocab_block * BLOCK_V + tl.arange(0, BLOCK_V)
+        hidden_offsets = tl.arange(0, BLOCK_H)
+        vocab_mask = vocab_offsets < vocab_size
+        acc = tl.zeros((BLOCK_V,), dtype=tl.float32)
+
+        for hidden_start in tl.range(0, hidden_size, BLOCK_H):
+            hidden_ids = hidden_start + hidden_offsets
+            hidden_mask = hidden_ids < hidden_size
+            h_vals = tl.load(
+                hidden_states + node_id * hidden_size + hidden_ids,
+                mask=hidden_mask,
+                other=0.0,
+            ).to(tl.float32)
+            w_vals = tl.load(
+                lm_head_weight + vocab_offsets[:, None] * hidden_size + hidden_ids[None, :],
+                mask=vocab_mask[:, None] & hidden_mask[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            acc += tl.sum(w_vals * h_vals[None, :], axis=1)
+
+        vals = tl.where(vocab_mask, acc, -float("inf"))
+        best_val = tl.max(vals, axis=0)
+        best_id = tl.min(
+            tl.where((vals == best_val) & vocab_mask, vocab_offsets, vocab_size),
+            axis=0,
+        ).to(tl.int32)
+        out_offset = node_id * num_vocab_blocks + vocab_block
+        tl.store(partial_vals + out_offset, best_val)
+        tl.store(partial_ids + out_offset, best_id)
+
+
+    @triton.jit
+    def _lm_head_argmax_reduce_kernel(
+        partial_vals,
+        partial_ids,
+        node_argmax,
+        num_vocab_blocks: tl.constexpr,
+        BLOCK_B: tl.constexpr,
+    ):
+        node_id = tl.program_id(0)
+        offsets = tl.arange(0, BLOCK_B)
+        mask = offsets < num_vocab_blocks
+        vals = tl.load(
+            partial_vals + node_id * num_vocab_blocks + offsets,
+            mask=mask,
+            other=-float("inf"),
+        )
+        ids = tl.load(
+            partial_ids + node_id * num_vocab_blocks + offsets,
+            mask=mask,
+            other=2147483647,
+        ).to(tl.int32)
+        best_val = tl.max(vals, axis=0)
+        best_id = tl.min(
+            tl.where((vals == best_val) & mask, ids, 2147483647),
+            axis=0,
+        ).to(tl.int32)
+        tl.store(node_argmax + node_id, best_id)
+
+
+    @triton.jit
+    def _lm_head_argmax_matmul_partial_kernel(
+        hidden_states,
+        lm_head_weight,
+        partial_vals,
+        partial_ids,
+        n_nodes: tl.constexpr,
+        num_vocab_blocks: tl.constexpr,
+        vocab_size: tl.constexpr,
+        hidden_size: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+    ):
+        node_block = tl.program_id(0)
+        vocab_block = tl.program_id(1)
+        nodes = node_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        vocab_offsets = vocab_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        k_offsets = tl.arange(0, BLOCK_K)
+        node_mask = nodes < n_nodes
+        vocab_mask = vocab_offsets < vocab_size
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+        for k_start in tl.range(0, hidden_size, BLOCK_K):
+            k_ids = k_start + k_offsets
+            k_mask = k_ids < hidden_size
+            h_vals = tl.load(
+                hidden_states + nodes[:, None] * hidden_size + k_ids[None, :],
+                mask=node_mask[:, None] & k_mask[None, :],
+                other=0.0,
+            )
+            w_vals = tl.load(
+                lm_head_weight + vocab_offsets[None, :] * hidden_size + k_ids[:, None],
+                mask=k_mask[:, None] & vocab_mask[None, :],
+                other=0.0,
+            )
+            acc += tl.dot(h_vals, w_vals)
+
+        vals = tl.where(node_mask[:, None] & vocab_mask[None, :], acc, -float("inf"))
+        best_vals = tl.max(vals, axis=1)
+        best_ids = tl.min(
+            tl.where(
+                (vals == best_vals[:, None]) & vocab_mask[None, :],
+                vocab_offsets[None, :],
+                vocab_size,
+            ),
+            axis=1,
+        ).to(tl.int32)
+        tl.store(
+            partial_vals + nodes * num_vocab_blocks + vocab_block,
+            best_vals,
+            mask=node_mask,
+        )
+        tl.store(
+            partial_ids + nodes * num_vocab_blocks + vocab_block,
+            best_ids,
+            mask=node_mask,
+        )
 
 
     @triton.jit
@@ -1530,6 +1747,62 @@ def turbo_qjl_select_paths_triton(
     return approx, selected[:count], bool(int(verify_full.item()))
 
 
+def node_budget_select_triton(
+    scores,
+    retrieve_indices,
+    mandatory_indices,
+    node_budget,
+    min_keep,
+    max_keep,
+    full_node_count,
+):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(scores):
+        return None
+    if not (_is_cuda_tensor(retrieve_indices) and _is_cuda_tensor(mandatory_indices)):
+        return None
+    if scores.dim() != 1 or retrieve_indices.dim() != 2:
+        return None
+    n_paths, path_len = retrieve_indices.shape
+    if int(n_paths) != int(scores.shape[0]) or int(n_paths) == 0:
+        return None
+    max_keep = int(max(1, min(max_keep, n_paths)))
+    min_keep = int(max(1, min(min_keep, max_keep)))
+    full_node_count = int(max(1, full_node_count))
+    if int(n_paths) > 128 or int(full_node_count) > 128:
+        return None
+
+    block_p = triton.next_power_of_2(int(n_paths))
+    block_n = triton.next_power_of_2(int(full_node_count))
+    mandatory_indices = mandatory_indices.to(device=scores.device, dtype=torch.long).contiguous()
+    mandatory_count = min(int(mandatory_indices.numel()), max_keep)
+    selected = torch.empty((max_keep,), device=scores.device, dtype=torch.long)
+    selected_count = torch.empty((), device=scores.device, dtype=torch.long)
+    try:
+        _node_budget_select_kernel[(1,)](
+            scores.contiguous(),
+            retrieve_indices.contiguous(),
+            mandatory_indices,
+            selected,
+            selected_count,
+            n_paths=int(n_paths),
+            path_len=int(path_len),
+            full_node_count=int(full_node_count),
+            node_budget=int(max(1, node_budget)),
+            min_keep=int(min_keep),
+            max_keep=int(max_keep),
+            mandatory_count=int(mandatory_count),
+            BLOCK_P=block_p,
+            BLOCK_N=block_n,
+            num_warps=4,
+        )
+    except Exception:
+        return None
+    count = int(selected_count.item())
+    if count <= 0:
+        return None
+    return selected[: min(count, max_keep)]
+
+
 def materialize_pruned_medusa_triton(full_tree_candidates, selected_nodes, token_indices):
     if not TRITON_AVAILABLE or not _is_cuda_tensor(full_tree_candidates):
         return None
@@ -1659,6 +1932,95 @@ def _launch_greedy_accept_from_argmax(
     except Exception:
         return None
     return best_candidate, accept_length
+
+
+def greedy_accept_from_argmax_triton(node_argmax, candidates, retrieve_indices, path_lengths=None):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(node_argmax):
+        return None
+    if not (_is_cuda_tensor(candidates) and _is_cuda_tensor(retrieve_indices)):
+        return None
+    if candidates.dim() != 2 or retrieve_indices.shape != candidates.shape:
+        return None
+    n_paths, path_len = candidates.shape
+    if n_paths <= 0 or path_len <= 1:
+        return None
+    if path_lengths is not None and not _is_cuda_tensor(path_lengths):
+        return None
+    return _launch_greedy_accept_from_argmax(
+        node_argmax.contiguous(),
+        candidates.contiguous(),
+        retrieve_indices.contiguous(),
+        path_lengths.contiguous() if path_lengths is not None else None,
+        int(n_paths),
+        int(path_len),
+    )
+
+
+def lm_head_argmax_triton(hidden_states, lm_head_weight, block_v=128, block_h=64):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(hidden_states):
+        return None
+    if not _is_cuda_tensor(lm_head_weight):
+        return None
+    if hidden_states.dim() != 2 or lm_head_weight.dim() != 2:
+        return None
+    n_nodes = int(hidden_states.shape[0])
+    hidden_size = int(hidden_states.shape[1])
+    vocab_size = int(lm_head_weight.shape[0])
+    if n_nodes <= 0 or hidden_size <= 0 or vocab_size <= 0:
+        return None
+    if int(lm_head_weight.shape[1]) != hidden_size:
+        return None
+    if n_nodes > 256 or vocab_size > 262144:
+        return None
+
+    hidden_states = hidden_states.contiguous()
+    if not lm_head_weight.is_contiguous():
+        lm_head_weight = lm_head_weight.contiguous()
+
+    block_v = int(block_v)
+    block_h = int(block_h)
+    if block_v <= 0 or block_h <= 0:
+        return None
+    num_vocab_blocks = triton.cdiv(vocab_size, block_v)
+    partial_vals = torch.empty(
+        (n_nodes, num_vocab_blocks),
+        device=hidden_states.device,
+        dtype=torch.float32,
+    )
+    partial_ids = torch.empty(
+        (n_nodes, num_vocab_blocks),
+        device=hidden_states.device,
+        dtype=torch.int32,
+    )
+    node_argmax = torch.empty((n_nodes,), device=hidden_states.device, dtype=torch.int32)
+
+    try:
+        block_m = 16
+        _lm_head_argmax_matmul_partial_kernel[(triton.cdiv(n_nodes, block_m), num_vocab_blocks)](
+            hidden_states,
+            lm_head_weight,
+            partial_vals,
+            partial_ids,
+            n_nodes=n_nodes,
+            num_vocab_blocks=num_vocab_blocks,
+            vocab_size=vocab_size,
+            hidden_size=hidden_size,
+            BLOCK_M=block_m,
+            BLOCK_N=block_v,
+            BLOCK_K=block_h,
+            num_warps=4,
+        )
+        _lm_head_argmax_reduce_kernel[(n_nodes,)](
+            partial_vals,
+            partial_ids,
+            node_argmax,
+            num_vocab_blocks=num_vocab_blocks,
+            BLOCK_B=triton.next_power_of_2(num_vocab_blocks),
+            num_warps=8,
+        )
+    except Exception:
+        return None
+    return node_argmax
 
 
 def greedy_tree_posterior_triton(tree_logits, candidates, retrieve_indices, path_lengths=None):

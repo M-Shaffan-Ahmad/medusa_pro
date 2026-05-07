@@ -356,6 +356,7 @@ class MedusaModelABC(nn.Module):
         position_ids=None,
         medusa_forward=False,
         return_medusa_logits=True,
+        return_outputs=False,
         last_token_logits=False,
         **kwargs,
     ):
@@ -398,8 +399,18 @@ class MedusaModelABC(nn.Module):
         medusa_logits = _compute_medusa_logits(self, hidden_states) if return_medusa_logits else None
         if output_orig:
             return medusa_logits, outputs, orig
+        if return_outputs:
+            return medusa_logits, outputs
         return medusa_logits
-    def get_medusa_choice(self, model_name):
+    def get_medusa_choice(self, model_name, preset=None):
+        if preset:
+            preset_key = str(preset).lower()
+            if preset_key not in MEDUSA_CHOICE_PRESETS:
+                available = ", ".join(sorted(MEDUSA_CHOICE_PRESETS))
+                raise ValueError(f"Unknown Medusa choice preset '{preset}'. Available presets: {available}")
+            return [tuple(path) for path in MEDUSA_CHOICE_PRESETS[preset_key]]
+
+        model_name = str(model_name).lower()
         if 'vicuna' in model_name:
             if '7b' in model_name:
                 return vicuna_7b_stage2
@@ -412,6 +423,32 @@ class MedusaModelABC(nn.Module):
         warnings.warn('Please specify medusa choice configuration!')
         return mc_sim_7b_63
 
+    def resolve_medusa_choices(
+        self,
+        medusa_choices=None,
+        medusa_choice_preset=None,
+        medusa_choice_limit=0,
+        medusa_choice_max_depth=0,
+    ):
+        if medusa_choices is None:
+            medusa_choices = self.get_medusa_choice(
+                self.base_model_name_or_path,
+                preset=medusa_choice_preset,
+            )
+
+        resolved = [tuple(path) for path in medusa_choices]
+        max_depth = int(medusa_choice_max_depth)
+        if max_depth > 0:
+            resolved = [path for path in resolved if len(path) <= max_depth]
+
+        choice_limit = int(medusa_choice_limit)
+        if choice_limit > 0:
+            resolved = resolved[:choice_limit]
+
+        if not resolved:
+            raise ValueError("Medusa choice resolution produced an empty tree.")
+        return resolved
+
     def medusa_generate(
         self,
         input_ids,
@@ -421,12 +458,25 @@ class MedusaModelABC(nn.Module):
         # The hyperparameters below are for the Medusa
         # top-1 prediciton for the next token, top-7 predictions for the next token, top-6 predictions for the next next token.
         medusa_choices=None,
+        medusa_choice_preset=None,
+        medusa_choice_limit=0,
+        medusa_choice_max_depth=0,
         posterior_threshold=0.09,  # threshold validation of Medusa output
         # another threshold hyperparameter, recommended to be sqrt(posterior_threshold)
         posterior_alpha=0.3,
         top_p=0.8, 
         sampling = 'typical', 
         fast = True,
+        turbo_auto=False,
+        turbo_fast_preset=False,
+        turbo_fused_lm_head_argmax=None,
+        turbo_fused_lm_head_chunk_size=4096,
+        turbo_adaptive_tree=False,
+        turbo_adaptive_tree_balanced_limit=32,
+        turbo_adaptive_tree_confidence_threshold=0.60,
+        turbo_adaptive_tree_check_interval=4,
+        turbo_adaptive_tree_accept_threshold=0.0,
+        turbo_adaptive_tree_ema_alpha=0.30,
         turbo_quant=False,
         turbo_kv_compression=False,
         turbo_prune_keep=16,
@@ -439,6 +489,13 @@ class MedusaModelABC(nn.Module):
         turbo_prune_min_fraction=0.0,
         turbo_prune_min_node_fraction=0.15,
         turbo_prune_node_budget=40,
+        turbo_prune_acceptance_prune_threshold=0.0,
+        turbo_prune_acceptance_keep_threshold=0.0,
+        turbo_prune_acceptance_dynamic=False,
+        turbo_prune_acceptance_dynamic_prune_min=0.10,
+        turbo_prune_acceptance_dynamic_prune_max=0.45,
+        turbo_prune_acceptance_dynamic_keep_min=0.45,
+        turbo_prune_acceptance_dynamic_keep_max=0.70,
         turbo_prune_decisive_margin=1.5,
         turbo_prune_decisive_keep=8,
         turbo_prune_use_qjl=True,
@@ -477,11 +534,45 @@ class MedusaModelABC(nn.Module):
             attention_mask (torch.Tensor, optional): Attention mask.
             temperature (float, optional): Temperature for typical acceptance.
             medusa_choices (list, optional): A list of integers indicating the number of choices for each Medusa head.
+            medusa_choice_preset (str, optional): Named choice-tree preset. Useful values
+                include "tinyllama_1b_fast_24" and "tinyllama_1b_balanced_32".
+            medusa_choice_limit (int, optional): Keep only the first N paths from the
+                resolved choice tree. `24` was the fastest TinyLlama 1B local setting
+                in the benchmark sweep.
+            medusa_choice_max_depth (int, optional): Drop choice paths deeper than this
+                before applying `medusa_choice_limit`. `0` keeps the model default depth.
             posterior_threshold (float, optional): Threshold for posterior validation.
             posterior_alpha (float, optional): Another threshold hyperparameter, recommended to be sqrt(posterior_threshold).
             top_p (float, optional): Cumulative probability threshold for nucleus sampling. Defaults to 0.8.
             sampling (str, optional): Defines the sampling strategy ('typical' or 'nucleus'). Defaults to 'typical'.
             fast (bool, optional): If True, enables faster, deterministic decoding for typical sampling. Defaults to False.
+            turbo_auto (bool, optional): SGLang/EAGLE-inspired production profile:
+                fast 24-choice verification by default, acceptance-aware 32-choice
+                expansion when the draft looks weak, no QJL planner, no fused LM-head
+                argmax by default.
+            turbo_fast_preset (bool, optional): Use the fastest local profile found so far:
+                24-choice tree plus greedy full-tree fast verifier, with pruning disabled.
+            turbo_fused_lm_head_argmax (bool, optional): In greedy Turbo verification,
+                compute verifier argmax ids directly from hidden states and the LM-head
+                weights, then materialize logits only for the accepted node. `None`
+                enables it only for `turbo_fast_preset`.
+            turbo_fused_lm_head_chunk_size (int, optional): Fallback vocab chunk size
+                for the non-Triton streaming LM-head argmax path.
+            turbo_adaptive_tree (bool, optional): Use the fast tree by default and
+                switch to a larger balanced tree on low Medusa confidence steps.
+            turbo_adaptive_tree_balanced_limit (int, optional): Choice count for the
+                larger adaptive tree. Defaults to 32.
+            turbo_adaptive_tree_confidence_threshold (float, optional): If the
+                two-token softmax confidence from Medusa heads falls below this,
+                use the balanced tree for the current step.
+            turbo_adaptive_tree_check_interval (int, optional): Recompute the
+                adaptive tree decision every N steps and reuse it between checks
+                to avoid a CPU/GPU sync each step.
+            turbo_adaptive_tree_accept_threshold (float, optional): Switch to the
+                balanced tree when the recent accepted-token EMA falls below this.
+                Set 0 to disable the acceptance-history trigger.
+            turbo_adaptive_tree_ema_alpha (float, optional): Update rate for the
+                accepted-token EMA used by adaptive tree sizing.
             turbo_quant (bool, optional): Enable TurboQuant two-pass pruning.
             turbo_kv_compression (bool, optional): Enable compressed KV cache.
             turbo_prune_keep (int, optional): Target number of candidate paths kept for high-accuracy verification.
@@ -505,6 +596,15 @@ class MedusaModelABC(nn.Module):
                 This catches cases where path pruning still leaves a nearly full tree block.
             turbo_prune_node_budget (int, optional): Maximum unique Medusa tree nodes to keep
                 when selecting paths. `0` disables node-budget selection.
+            turbo_prune_acceptance_prune_threshold (float, optional): Relative Medusa-prior
+                confidence below which paths are treated as low-confidence pruning candidates.
+                This is a proxy, not exact verifier acceptance probability.
+            turbo_prune_acceptance_keep_threshold (float, optional): Relative Medusa-prior
+                confidence above which paths are protected from pruning. For example, `0.5`
+                keeps paths that look at least half as plausible as the current best path.
+            turbo_prune_acceptance_dynamic (bool, optional): Use per-step dynamic acceptance
+                thresholds. Sharp Medusa priors prune more aggressively; flat priors keep
+                more branches or fall back.
             turbo_prune_decisive_margin (float, optional): If the cheap Medusa-only path
                 margin exceeds this multiple of score stddev, skip QJL and use a smaller
                 verifier tree immediately. Set negative to disable.
@@ -580,22 +680,68 @@ class MedusaModelABC(nn.Module):
         assert input_ids.shape[0] == 1, "Only support batch size 1 for now!!"
         # Avoid modifying the input_ids in-place
         input_ids = input_ids.clone()
+        explicit_medusa_choices = medusa_choices is not None
+
+        if turbo_auto:
+            turbo_fast_preset = True
+            turbo_adaptive_tree = True
+            turbo_fused_lm_head_argmax = False
+            turbo_prune_use_kv_qjl = False
+            turbo_prune_use_qjl = False
+
+        if turbo_fast_preset:
+            turbo_quant = True
+            turbo_kv_compression = False
+            turbo_force_full_tree_fast_verifier = True
+            turbo_prune_use_kv_qjl = False
+            if (
+                medusa_choices is None
+                and medusa_choice_preset is None
+                and int(medusa_choice_limit) <= 0
+            ):
+                medusa_choice_limit = 24
+        if turbo_fused_lm_head_argmax is None:
+            turbo_fused_lm_head_argmax = False
 
         # Cache medusa buffers (the fixed patterns for tree attention)
-        if medusa_choices is None:
-            medusa_choices = self.get_medusa_choice(self.base_model_name_or_path)
+        medusa_choices = self.resolve_medusa_choices(
+            medusa_choices=medusa_choices,
+            medusa_choice_preset=medusa_choice_preset,
+            medusa_choice_limit=medusa_choice_limit,
+            medusa_choice_max_depth=medusa_choice_max_depth,
+        )
 
-        if hasattr(self, "medusa_choices") and self.medusa_choices == medusa_choices:
-            # Load the cached medusa buffer
-            medusa_buffers = self.medusa_buffers
-        else:
-            # Initialize the medusa buffer
-            medusa_buffers = generate_medusa_buffers(
-                medusa_choices, device=self.base_model.device
+        adaptive_medusa_choices = None
+        if turbo_adaptive_tree and not explicit_medusa_choices:
+            adaptive_medusa_choices = self.resolve_medusa_choices(
+                medusa_choices=None,
+                medusa_choice_preset=medusa_choice_preset,
+                medusa_choice_limit=int(turbo_adaptive_tree_balanced_limit),
+                medusa_choice_max_depth=medusa_choice_max_depth,
+            )
+            if adaptive_medusa_choices == medusa_choices:
+                adaptive_medusa_choices = None
+
+        def get_cached_medusa_buffers(choice_set):
+            key = (str(self.base_model.device), tuple(tuple(path) for path in choice_set))
+            if not hasattr(self, "medusa_buffer_cache"):
+                self.medusa_buffer_cache = {}
+            cache = self.medusa_buffer_cache
+            if key not in cache:
+                cache[key] = generate_medusa_buffers(
+                    choice_set, device=self.base_model.device
+                )
+            return cache[key], key
+
+        medusa_buffers, medusa_choices_key = get_cached_medusa_buffers(medusa_choices)
+        adaptive_medusa_buffers = None
+        adaptive_medusa_choices_key = None
+        if adaptive_medusa_choices is not None:
+            adaptive_medusa_buffers, adaptive_medusa_choices_key = get_cached_medusa_buffers(
+                adaptive_medusa_choices
             )
         self.medusa_buffers = medusa_buffers
         self.medusa_choices = medusa_choices
-        medusa_choices_key = (str(self.base_model.device), tuple(tuple(path) for path in medusa_choices))
         if (
             not hasattr(self, "turbo_pruned_layout_cache")
             or getattr(self, "turbo_pruned_layout_cache_key", None) != medusa_choices_key
@@ -606,6 +752,11 @@ class MedusaModelABC(nn.Module):
         # Medusa may accept multiple tokens per step, so max_steps alone can
         # underestimate cache length. Use tree depth for a safe upper bound.
         max_path_depth = max((len(path) for path in medusa_choices), default=1)
+        if adaptive_medusa_choices is not None:
+            max_path_depth = max(
+                max_path_depth,
+                max((len(path) for path in adaptive_medusa_choices), default=1),
+            )
         worst_case_new_tokens = int(max_steps * (max_path_depth + 1))
         required_kv_len = int(input_ids.shape[1] + worst_case_new_tokens + 8)
         effective_kv_max_length = max(int(turbo_kv_max_length), required_kv_len)
@@ -709,6 +860,15 @@ class MedusaModelABC(nn.Module):
         full_path_lengths = (medusa_buffers["retrieve_indices"][:, 1:] >= 0).sum(dim=1)
         full_tree_node_count = int(medusa_buffers["tree_indices"].numel())
         full_candidate_path_count = int(medusa_buffers["retrieve_indices"].shape[0])
+        adaptive_full_path_lengths = None
+        adaptive_full_tree_node_count = 0
+        adaptive_full_candidate_path_count = 0
+        if adaptive_medusa_buffers is not None:
+            adaptive_full_path_lengths = (
+                adaptive_medusa_buffers["retrieve_indices"][:, 1:] >= 0
+            ).sum(dim=1)
+            adaptive_full_tree_node_count = int(adaptive_medusa_buffers["tree_indices"].numel())
+            adaptive_full_candidate_path_count = int(adaptive_medusa_buffers["retrieve_indices"].shape[0])
         turbo_pruned_layout_cache = self.turbo_pruned_layout_cache if turbo_quant else None
         embed_weight = None
         qjl_scorer = None
@@ -768,6 +928,11 @@ class MedusaModelABC(nn.Module):
             stats = {
                 "decode_steps": 0,
                 "generated_tokens": 0,
+                "medusa_choice_count": int(len(medusa_choices)),
+                "medusa_choice_max_depth": int(max_path_depth),
+                "turbo_auto_steps": 0,
+                "adaptive_tree_steps": 0,
+                "adaptive_tree_balanced_steps": 0,
                 "candidate_paths_considered": 0,
                 "selected_candidate_paths": 0,
                 "verified_tree_nodes": 0,
@@ -778,6 +943,7 @@ class MedusaModelABC(nn.Module):
                 "planner_steps": 0,
                 "planner_full_tree_decisions": 0,
                 "planner_bypass_steps": 0,
+                "fused_lm_head_argmax_steps": 0,
                 "packed_kv_qjl_steps": 0,
                 "packed_kv_qjl_fallback_steps": 0,
                 "packed_kv_qjl_gated_steps": 0,
@@ -812,11 +978,104 @@ class MedusaModelABC(nn.Module):
                 result["stats"] = dict(stats)
             return result
 
+        eos_token_id = self.tokenizer.eos_token_id
+
+        def new_tokens_have_eos(start_len):
+            if eos_token_id is None or input_ids.shape[1] <= start_len:
+                return False
+            return bool((input_ids[0, start_len:] == eos_token_id).any().item())
+
         planner_full_tree_streak = 0
         planner_bypass_pruning = False
         packed_kv_qjl_fallback_streak = 0
+        fused_lm_head = getattr(self.base_model, "lm_head", None)
+        fused_lm_head_weight = getattr(fused_lm_head, "weight", None)
+        use_fused_lm_head_argmax = bool(
+            turbo_fused_lm_head_argmax
+            and temperature == 0
+            and fused_lm_head is not None
+            and fused_lm_head_weight is not None
+        )
+
+        def evaluate_greedy_tree(tree_logits, tree_hidden, eval_candidates, eval_retrieve_indices, eval_path_lengths):
+            if tree_logits is not None:
+                return evaluate_posterior_greedy_from_tree(
+                    tree_logits,
+                    eval_candidates,
+                    eval_retrieve_indices,
+                    path_lengths=eval_path_lengths,
+                )
+            node_argmax = lm_head_argmax(
+                tree_hidden,
+                fused_lm_head_weight,
+                chunk_size=turbo_fused_lm_head_chunk_size,
+                prefer_triton=True,
+            )
+            if stats is not None:
+                stats["fused_lm_head_argmax_steps"] += 1
+            return evaluate_posterior_greedy_from_argmax(
+                node_argmax,
+                eval_candidates,
+                eval_retrieve_indices,
+                path_lengths=eval_path_lengths,
+            )
+
+        primary_medusa_buffers = medusa_buffers
+        primary_full_path_lengths = full_path_lengths
+        primary_full_tree_node_count = full_tree_node_count
+        primary_full_candidate_path_count = full_candidate_path_count
+        use_adaptive_tree = bool(
+            turbo_adaptive_tree
+            and adaptive_medusa_buffers is not None
+            and turbo_quant
+            and turbo_force_full_tree_fast_verifier
+            and temperature == 0
+        )
+        adaptive_confidence_threshold = float(turbo_adaptive_tree_confidence_threshold)
+        adaptive_check_interval = max(1, int(turbo_adaptive_tree_check_interval))
+        adaptive_accept_threshold = float(turbo_adaptive_tree_accept_threshold)
+        adaptive_ema_alpha = max(0.0, min(1.0, float(turbo_adaptive_tree_ema_alpha)))
+        adaptive_use_balanced_tree = False
+        adaptive_accept_ema = 1.0
+
+        def record_adaptive_acceptance(accepted_tokens):
+            nonlocal adaptive_accept_ema
+            accepted_tokens = float(max(1, int(accepted_tokens)))
+            adaptive_accept_ema = (
+                (1.0 - adaptive_ema_alpha) * adaptive_accept_ema
+                + adaptive_ema_alpha * accepted_tokens
+            )
 
         for idx in range(max_steps):
+            step_input_len = input_ids.shape[1]
+            if turbo_auto and stats is not None:
+                stats["turbo_auto_steps"] += 1
+            if use_adaptive_tree:
+                medusa_buffers = primary_medusa_buffers
+                full_path_lengths = primary_full_path_lengths
+                full_tree_node_count = primary_full_tree_node_count
+                full_candidate_path_count = primary_full_candidate_path_count
+                if stats is not None:
+                    stats["adaptive_tree_steps"] += 1
+                if idx % adaptive_check_interval == 0:
+                    head_top2 = torch.topk(medusa_logits[:, 0, -1], k=2, dim=-1).values
+                    head_confidence = torch.sigmoid(
+                        (head_top2[:, 0] - head_top2[:, 1]).to(torch.float32)
+                    ).mean()
+                    adaptive_use_balanced_tree = bool(
+                        (head_confidence < adaptive_confidence_threshold).item()
+                        or (
+                            adaptive_accept_threshold > 0.0
+                            and adaptive_accept_ema < adaptive_accept_threshold
+                        )
+                    )
+                if adaptive_use_balanced_tree:
+                    medusa_buffers = adaptive_medusa_buffers
+                    full_path_lengths = adaptive_full_path_lengths
+                    full_tree_node_count = adaptive_full_tree_node_count
+                    full_candidate_path_count = adaptive_full_candidate_path_count
+                    if stats is not None:
+                        stats["adaptive_tree_balanced_steps"] += 1
             if stats is not None:
                 stats["decode_steps"] += 1
             used_packed_kv_qjl = False
@@ -832,6 +1091,7 @@ class MedusaModelABC(nn.Module):
                 top_p=top_p,
                 sampling=sampling,
                 fast=fast,
+                tree_topk=medusa_buffers.get("tree_topk"),
             )
             if stats is not None:
                 stats["candidate_paths_considered"] += int(candidates.shape[0])
@@ -889,6 +1149,13 @@ class MedusaModelABC(nn.Module):
                                 kv_qjl_weight=turbo_kv_qjl_weight,
                                 medusa_pool_fraction=turbo_kv_qjl_medusa_pool_fraction,
                                 medusa_anchor_keep=turbo_kv_qjl_medusa_anchor_keep,
+                                acceptance_prune_threshold=turbo_prune_acceptance_prune_threshold,
+                                acceptance_keep_threshold=turbo_prune_acceptance_keep_threshold,
+                                acceptance_threshold_dynamic=turbo_prune_acceptance_dynamic,
+                                acceptance_dynamic_prune_min=turbo_prune_acceptance_dynamic_prune_min,
+                                acceptance_dynamic_prune_max=turbo_prune_acceptance_dynamic_prune_max,
+                                acceptance_dynamic_keep_min=turbo_prune_acceptance_dynamic_keep_min,
+                                acceptance_dynamic_keep_max=turbo_prune_acceptance_dynamic_keep_max,
                             )
                             used_packed_kv_qjl = True
                             if stats is not None:
@@ -917,6 +1184,13 @@ class MedusaModelABC(nn.Module):
                             decisive_margin_scale=turbo_prune_decisive_margin,
                             decisive_keep=turbo_prune_decisive_keep,
                             use_qjl=turbo_prune_use_qjl,
+                            acceptance_prune_threshold=turbo_prune_acceptance_prune_threshold,
+                            acceptance_keep_threshold=turbo_prune_acceptance_keep_threshold,
+                            acceptance_threshold_dynamic=turbo_prune_acceptance_dynamic,
+                            acceptance_dynamic_prune_min=turbo_prune_acceptance_dynamic_prune_min,
+                            acceptance_dynamic_prune_max=turbo_prune_acceptance_dynamic_prune_max,
+                            acceptance_dynamic_keep_min=turbo_prune_acceptance_dynamic_keep_min,
+                            acceptance_dynamic_keep_max=turbo_prune_acceptance_dynamic_keep_max,
                         )
                     if stats is not None:
                         stats["planner_steps"] += 1
@@ -969,9 +1243,11 @@ class MedusaModelABC(nn.Module):
                         input_ids_buffer=input_ids_buffer,
                     )
                     new_token += 1
+                    if use_adaptive_tree:
+                        record_adaptive_acceptance(1)
                     if stats is not None:
                         stats["skip_gating_steps"] += 1
-                    should_stop = self.tokenizer.eos_token_id in input_ids[0, input_len:]
+                    should_stop = new_tokens_have_eos(step_input_len)
                     if stream:
                         yield build_stream_output()
                     if should_stop:
@@ -998,13 +1274,15 @@ class MedusaModelABC(nn.Module):
                             return_hidden=True,
                             gather_paths=False,
                             compute_medusa_logits=not lazy_tree_medusa_logits,
+                            compute_orig_logits=not use_fused_lm_head_argmax,
                             fast_attention_mask=True,
                         )
-                        best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                        best_candidate, accept_length = evaluate_greedy_tree(
                             logits,
+                            tree_hidden,
                             candidates,
                             medusa_buffers["retrieve_indices"],
-                            path_lengths=full_path_lengths,
+                            full_path_lengths,
                         )
                         use_tree_update = True
                     else:
@@ -1058,13 +1336,15 @@ class MedusaModelABC(nn.Module):
                                 return_hidden=True,
                                 gather_paths=False,
                                 compute_medusa_logits=not lazy_tree_medusa_logits,
+                                compute_orig_logits=not use_fused_lm_head_argmax,
                                 fast_attention_mask=True,
                             )
-                            best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                            best_candidate, accept_length = evaluate_greedy_tree(
                                 logits,
+                                tree_hidden,
                                 candidates,
                                 medusa_buffers["retrieve_indices"],
-                                path_lengths=full_path_lengths,
+                                full_path_lengths,
                             )
                             use_tree_update = True
                         else:
@@ -1110,13 +1390,15 @@ class MedusaModelABC(nn.Module):
                                 return_hidden=True,
                                 gather_paths=False,
                                 compute_medusa_logits=not lazy_tree_medusa_logits,
+                                compute_orig_logits=not use_fused_lm_head_argmax,
                                 fast_attention_mask=True,
                             )
-                            best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                            best_candidate, accept_length = evaluate_greedy_tree(
                                 logits,
+                                tree_hidden,
                                 pruned["candidates"],
                                 pruned["retrieve_indices"],
-                                path_lengths=pruned["path_lengths"],
+                                pruned["path_lengths"],
                             )
                             use_tree_update = True
                         else:
@@ -1175,13 +1457,15 @@ class MedusaModelABC(nn.Module):
                                     return_hidden=True,
                                     gather_paths=False,
                                     compute_medusa_logits=not lazy_tree_medusa_logits,
+                                    compute_orig_logits=not use_fused_lm_head_argmax,
                                     fast_attention_mask=True,
                                 )
-                                best_candidate, accept_length = evaluate_posterior_greedy_from_tree(
+                                best_candidate, accept_length = evaluate_greedy_tree(
                                     logits,
+                                    tree_hidden,
                                     candidates,
                                     medusa_buffers["retrieve_indices"],
-                                    path_lengths=full_path_lengths,
+                                    full_path_lengths,
                                 )
                                 use_tree_update = True
                             else:
@@ -1229,6 +1513,8 @@ class MedusaModelABC(nn.Module):
                         current_length_data,
                         past_key_values=past_key_values,
                         input_ids_buffer=input_ids_buffer,
+                        lm_head=fused_lm_head if logits is None else None,
+                        tree_hidden=tree_hidden if logits is None else None,
                     )
                     node_idx = update_retrieve_indices[best_candidate, accept_length].reshape(1)
                     accepted_hidden = None
@@ -1238,6 +1524,7 @@ class MedusaModelABC(nn.Module):
                         medusa_logits = _compute_medusa_logits(self, accepted_hidden.unsqueeze(0))
                     if need_turbo_query_state:
                         query_state = accepted_hidden.detach()
+                    accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
                 else:
                     input_ids, logits, medusa_logits, new_token = update_inference_inputs(
                         input_ids,
@@ -1303,7 +1590,10 @@ class MedusaModelABC(nn.Module):
                 accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
                 query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
 
-            should_stop = self.tokenizer.eos_token_id in input_ids[0, input_len:]
+            if use_adaptive_tree:
+                record_adaptive_acceptance(accept_idx + 1)
+
+            should_stop = new_tokens_have_eos(step_input_len)
             if stream:
                 yield build_stream_output()
 

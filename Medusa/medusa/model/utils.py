@@ -1,25 +1,40 @@
 import math
+import os
 import torch
 import torch.nn.functional as F
 
 try:
     from .triton_kernels import (
         copy_selected_kv_cache_triton,
+        greedy_accept_from_argmax_triton,
         greedy_tree_posterior_triton,
+        lm_head_argmax_triton,
         materialize_pruned_medusa_triton,
+        node_budget_select_triton,
         packed_kv_qjl_node_scores_triton,
         qjl_path_scores_triton,
         turbo_qjl_select_paths_triton,
     )
 except Exception:  # pragma: no cover - optional CUDA/Triton acceleration
     copy_selected_kv_cache_triton = None
+    greedy_accept_from_argmax_triton = None
     greedy_tree_posterior_triton = None
+    lm_head_argmax_triton = None
     materialize_pruned_medusa_triton = None
+    node_budget_select_triton = None
     packed_kv_qjl_node_scores_triton = None
     qjl_path_scores_triton = None
     turbo_qjl_select_paths_triton = None
 
-TOPK=10 # topk for sparse tree (10 is a placeholder and it is sufficient)
+TOPK=10 # max rank stride for sparse tree buffers
+
+
+def _effective_tree_topk(tree_topk=None):
+    if tree_topk is None:
+        return TOPK
+    if torch.is_tensor(tree_topk):
+        tree_topk = int(tree_topk.item())
+    return max(1, min(TOPK, int(tree_topk)))
 
 
 def append_input_ids(input_ids, append_tokens, input_ids_buffer=None):
@@ -154,7 +169,7 @@ def _normalize_scores(scores):
     return (scores - scores.mean()) / (std + 1e-6)
 
 
-def estimate_medusa_path_scores(medusa_logits, logits, tree_indices, retrieve_indices, candidates=None):
+def estimate_medusa_path_scores(medusa_logits, logits, tree_indices, retrieve_indices, candidates=None, tree_topk=None):
     """
     Score paths using the exact root LM logit and exact Medusa-head top-k logits.
 
@@ -172,8 +187,23 @@ def estimate_medusa_path_scores(medusa_logits, logits, tree_indices, retrieve_in
     else:
         root_score = torch.max(root_logits)
 
-    medusa_topk = torch.topk(medusa_logits[:, 0, -1], TOPK, dim=-1).values
-    score_bank = torch.cat([root_score.reshape(1), medusa_topk.reshape(-1)], dim=0)
+    if tree_topk is None and tree_indices is not None and tree_indices.numel() > 1:
+        positive_tree_indices = tree_indices[tree_indices > 0]
+        if positive_tree_indices.numel() > 0:
+            tree_topk = int((positive_tree_indices - 1).remainder(TOPK).max().item()) + 1
+    effective_topk = _effective_tree_topk(tree_topk)
+    medusa_topk = torch.topk(medusa_logits[:, 0, -1], effective_topk, dim=-1).values
+    if effective_topk == TOPK:
+        medusa_score_bank = medusa_topk
+    else:
+        medusa_score_bank = torch.empty(
+            (medusa_topk.shape[0], TOPK),
+            dtype=medusa_topk.dtype,
+            device=medusa_topk.device,
+        )
+        medusa_score_bank[:, :effective_topk] = medusa_topk
+        medusa_score_bank[:, effective_topk:] = medusa_topk[:, -1:]
+    score_bank = torch.cat([root_score.reshape(1), medusa_score_bank.reshape(-1)], dim=0)
 
     node_scores = score_bank[tree_indices]
     node_scores_ext = torch.cat(
@@ -262,10 +292,12 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
     # Generate tree indices for the Medusa structure
     medusa_tree_indices = torch.zeros(medusa_len, dtype=torch.long)
     medusa_tree_indices[0] = 0
+    max_tree_rank = 0
     start = 0
     for i in range(len(depth_counts)):
         for j in range(depth_counts[i]):
             cur_medusa_choice = sorted_medusa_choices[start + j]
+            max_tree_rank = max(max_tree_rank, int(cur_medusa_choice[-1]))
             medusa_tree_indices[start + j + 1] = cur_medusa_choice[-1] + TOPK * i + 1
         start += depth_counts[i]
 
@@ -301,6 +333,7 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
         "tree_indices": medusa_tree_indices,
         "medusa_position_ids": medusa_position_ids,
         "retrieve_indices": retrieve_indices,
+        "tree_topk": torch.tensor(max_tree_rank + 1, dtype=torch.long),
         }
     
     # Move the tensors in the dictionary to the specified device
@@ -513,7 +546,7 @@ def get_typical_one_token(logit, temperature, posterior_threshold, posterior_alp
     sampled_tokens = torch.multinomial(F.softmax(logit, dim=-1), 1)
     return sampled_tokens
 
-def generate_candidates(medusa_logits, logits, tree_indices, retrieve_indices, temperature = 0, posterior_threshold=0.3, posterior_alpha = 0.09, top_p=0.8, sampling = 'typical', fast = False):
+def generate_candidates(medusa_logits, logits, tree_indices, retrieve_indices, temperature = 0, posterior_threshold=0.3, posterior_alpha = 0.09, top_p=0.8, sampling = 'typical', fast = False, tree_topk=None):
     """
     Generate candidates based on provided logits and indices.
     
@@ -544,8 +577,20 @@ def generate_candidates(medusa_logits, logits, tree_indices, retrieve_indices, t
             candidates_logit = get_nucleus_one_token(logits[:, -1], temperature, top_p).squeeze(0)
         else:
             raise NotImplementedError
-    # Extract the TOPK candidates from the medusa logits.
-    candidates_medusa_logits = torch.topk(medusa_logits[:, 0, -1], TOPK, dim = -1).indices
+    # Extract only the ranks used by the active tree, while keeping the
+    # historical TOPK-strided candidate bank layout expected by tree_indices.
+    effective_topk = _effective_tree_topk(tree_topk)
+    candidates_medusa_topk = torch.topk(medusa_logits[:, 0, -1], effective_topk, dim = -1).indices
+    if effective_topk == TOPK:
+        candidates_medusa_logits = candidates_medusa_topk
+    else:
+        candidates_medusa_logits = torch.empty(
+            (candidates_medusa_topk.shape[0], TOPK),
+            dtype=candidates_medusa_topk.dtype,
+            device=candidates_medusa_topk.device,
+        )
+        candidates_medusa_logits[:, :effective_topk] = candidates_medusa_topk
+        candidates_medusa_logits[:, effective_topk:] = candidates_medusa_topk[:, -1:]
 
     # Combine the selected candidate from the original logits with the topk medusa logits.
     candidates = torch.cat([candidates_logit, candidates_medusa_logits.view(-1)], dim=-1)
@@ -673,6 +718,17 @@ def estimate_packed_kv_qjl_path_scores(node_scores, retrieve_indices):
     return (path_scores * valid_mask_f).sum(dim=1) / path_lens, valid_mask.sum(dim=1)
 
 
+def _unique_index_cat(parts, device):
+    valid_parts = []
+    for part in parts:
+        if part is None or part.numel() == 0:
+            continue
+        valid_parts.append(part.to(device=device, dtype=torch.long).reshape(-1))
+    if not valid_parts:
+        return torch.empty(0, dtype=torch.long, device=device)
+    return torch.unique(torch.cat(valid_parts))
+
+
 def _mandatory_top1_path_indices(retrieve_indices, tree_indices, max_paths=2):
     """Find deepest all-top1 Medusa paths that should never be pruned."""
     if retrieve_indices.numel() == 0:
@@ -693,6 +749,138 @@ def _mandatory_top1_path_indices(retrieve_indices, tree_indices, max_paths=2):
     return top1_rows[order[:max_paths]]
 
 
+def _long_medusa_anchor_path_indices(
+    retrieve_indices,
+    medusa_path_scores,
+    max_paths=4,
+    min_length=2,
+):
+    """
+    Pick high-priority long paths that should survive approximate pruning.
+
+    A compact tree can look cheap while accidentally dropping the only plausible
+    deep continuation. These anchors keep the best Medusa-prior path at each
+    speculative depth, starting from the deepest paths.
+    """
+    if retrieve_indices.numel() == 0 or medusa_path_scores is None:
+        return torch.empty(0, dtype=torch.long, device=retrieve_indices.device)
+
+    path_lengths = (retrieve_indices[:, 1:] >= 0).sum(dim=1)
+    if path_lengths.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=retrieve_indices.device)
+
+    max_paths = max(0, int(max_paths))
+    if max_paths == 0:
+        return torch.empty(0, dtype=torch.long, device=retrieve_indices.device)
+
+    max_length = int(path_lengths.max().item())
+    anchors = []
+    for length in range(max_length, max(1, int(min_length)) - 1, -1):
+        rows = torch.where(path_lengths == length)[0]
+        if rows.numel() == 0:
+            continue
+        best = rows[torch.argmax(medusa_path_scores.index_select(0, rows))]
+        anchors.append(best.reshape(1))
+        if len(anchors) >= max_paths:
+            break
+
+    if not anchors:
+        return torch.empty(0, dtype=torch.long, device=retrieve_indices.device)
+    return torch.unique(torch.cat(anchors))
+
+
+def _path_acceptance_confidence(path_scores):
+    """
+    Convert Medusa path-prior scores into relative confidence in [0, 1].
+
+    This is not the exact verifier acceptance probability. It is a cheap proxy
+    that ranks each candidate against the strongest Medusa-prior path in the
+    current tree. A value of 0.5 means "about half as plausible as the best path"
+    under this local proxy.
+    """
+    if path_scores is None or path_scores.numel() == 0:
+        return None
+    probs = torch.softmax(_normalize_scores(path_scores), dim=0)
+    return probs / probs.max().clamp_min(1.0e-6)
+
+
+def _acceptance_confidence_sharpness(path_scores):
+    confidence = _path_acceptance_confidence(path_scores)
+    if confidence is None or confidence.numel() <= 1:
+        return 0.0
+    top2 = torch.topk(confidence, k=2, dim=0).values
+    return float((1.0 - top2[1]).clamp(0.0, 1.0).item())
+
+
+def _resolve_acceptance_thresholds(
+    path_scores,
+    prune_threshold=0.0,
+    keep_threshold=0.0,
+    dynamic=False,
+    dynamic_prune_min=0.10,
+    dynamic_prune_max=0.45,
+    dynamic_keep_min=0.45,
+    dynamic_keep_max=0.70,
+):
+    if not dynamic:
+        return float(prune_threshold or 0.0), float(keep_threshold or 0.0)
+
+    sharpness = _acceptance_confidence_sharpness(path_scores)
+    prune_low = float(dynamic_prune_min)
+    prune_high = max(prune_low, float(dynamic_prune_max))
+    keep_low = float(dynamic_keep_min)
+    keep_high = max(keep_low, float(dynamic_keep_max))
+    prune = prune_low + sharpness * (prune_high - prune_low)
+    keep = keep_low + sharpness * (keep_high - keep_low)
+    return prune, keep
+
+
+def _confidence_anchor_path_indices(path_scores, keep_threshold=0.0):
+    if path_scores is None or path_scores.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=path_scores.device if path_scores is not None else "cpu")
+    keep_threshold = float(keep_threshold or 0.0)
+    if keep_threshold <= 0.0:
+        return torch.empty(0, dtype=torch.long, device=path_scores.device)
+    confidence = _path_acceptance_confidence(path_scores)
+    return torch.where(confidence >= keep_threshold)[0]
+
+
+def _apply_acceptance_prune_threshold(selection_scores, medusa_path_scores, prune_threshold=0.0):
+    prune_threshold = float(prune_threshold or 0.0)
+    if prune_threshold <= 0.0 or medusa_path_scores is None or selection_scores.numel() == 0:
+        return selection_scores
+    confidence = _path_acceptance_confidence(medusa_path_scores)
+    low_confidence = confidence < prune_threshold
+    if not bool(low_confidence.any().item()):
+        return selection_scores
+    penalty = (selection_scores.std(unbiased=False) + 1.0) * 4.0
+    return torch.where(low_confidence, selection_scores - penalty, selection_scores)
+
+
+def _acceptance_anchor_path_indices(
+    retrieve_indices,
+    tree_indices,
+    medusa_path_scores=None,
+    max_long_paths=4,
+    keep_threshold=0.0,
+):
+    return _unique_index_cat(
+        [
+            _mandatory_top1_path_indices(retrieve_indices, tree_indices),
+            _long_medusa_anchor_path_indices(
+                retrieve_indices,
+                medusa_path_scores,
+                max_paths=max_long_paths,
+            ),
+            _confidence_anchor_path_indices(
+                medusa_path_scores,
+                keep_threshold=keep_threshold,
+            ),
+        ],
+        device=retrieve_indices.device,
+    )
+
+
 def select_topk_paths_for_verification(
     approx_scores,
     keep_target=12,
@@ -700,6 +888,7 @@ def select_topk_paths_for_verification(
     max_keep=15,
     retrieve_indices=None,
     tree_indices=None,
+    mandatory_indices=None,
 ):
     """Select a small subset of candidate paths for high-accuracy verification."""
     total_paths = approx_scores.shape[0]
@@ -716,8 +905,13 @@ def select_topk_paths_for_verification(
             keep = min(max_keep, total_paths)
 
     mandatory = torch.empty(0, dtype=torch.long, device=approx_scores.device)
-    if retrieve_indices is not None and tree_indices is not None:
+    if mandatory_indices is not None:
+        mandatory = mandatory_indices.to(device=approx_scores.device, dtype=torch.long)
+    elif retrieve_indices is not None and tree_indices is not None:
         mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+    if mandatory.numel() > 0:
+        mandatory = mandatory[(mandatory >= 0) & (mandatory < total_paths)]
+        mandatory = torch.unique(mandatory)
 
     if mandatory.numel() >= keep:
         return mandatory[:keep]
@@ -737,6 +931,7 @@ def select_paths_for_node_budget(
     node_budget,
     min_keep=1,
     max_keep=None,
+    mandatory_indices=None,
 ):
     """
     Select high-scoring paths while capping unique Medusa tree nodes.
@@ -761,7 +956,31 @@ def select_paths_for_node_budget(
     min_keep = min(max(1, int(min_keep)), total_paths)
     node_budget = max(1, int(node_budget))
 
-    mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+    if mandatory_indices is None:
+        mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+    else:
+        mandatory = mandatory_indices.to(device=approx_scores.device, dtype=torch.long)
+        mandatory = mandatory[(mandatory >= 0) & (mandatory < total_paths)]
+        mandatory = torch.unique(mandatory)
+
+    if (
+        os.environ.get("MEDUSA_TRITON_NODE_SELECT", "0") == "1"
+        and node_budget_select_triton is not None
+        and approx_scores.is_cuda
+        and retrieve_indices.is_cuda
+    ):
+        fast_selected = node_budget_select_triton(
+            approx_scores,
+            retrieve_indices,
+            mandatory,
+            node_budget=node_budget,
+            min_keep=min_keep,
+            max_keep=max_keep,
+            full_node_count=int(tree_indices.numel()),
+        )
+        if fast_selected is not None and fast_selected.numel() > 0:
+            return fast_selected
+
     ranked = torch.argsort(approx_scores, descending=True)
     if mandatory.numel() > 0:
         ranked = ranked[~torch.isin(ranked, mandatory)]
@@ -812,6 +1031,7 @@ def select_paths_for_pruning(
     retrieve_indices=None,
     tree_indices=None,
     node_budget=0,
+    mandatory_indices=None,
 ):
     if (
         node_budget is not None
@@ -826,6 +1046,7 @@ def select_paths_for_pruning(
             node_budget=node_budget,
             min_keep=min_keep,
             max_keep=max_keep,
+            mandatory_indices=mandatory_indices,
         )
     return select_topk_paths_for_verification(
         approx_scores,
@@ -834,6 +1055,7 @@ def select_paths_for_pruning(
         max_keep=max_keep,
         retrieve_indices=retrieve_indices,
         tree_indices=tree_indices,
+        mandatory_indices=mandatory_indices,
     )
 
 
@@ -911,6 +1133,16 @@ def selected_paths_have_enough_node_gain(
     return pruned_fraction >= float(min_node_prune_fraction)
 
 
+def selected_paths_include_required(selected_path_indices, required_indices):
+    if required_indices is None or required_indices.numel() == 0:
+        return True
+    if selected_path_indices is None or selected_path_indices.numel() == 0:
+        return False
+    required_indices = required_indices.to(device=selected_path_indices.device, dtype=torch.long)
+    selected_path_indices = selected_path_indices.to(dtype=torch.long)
+    return bool(torch.isin(required_indices, selected_path_indices).all().item())
+
+
 def plan_turbo_pruning(
     medusa_logits,
     logits,
@@ -932,6 +1164,13 @@ def plan_turbo_pruning(
     decisive_margin_scale=1.5,
     decisive_keep=8,
     use_qjl=True,
+    acceptance_prune_threshold=0.0,
+    acceptance_keep_threshold=0.0,
+    acceptance_threshold_dynamic=False,
+    acceptance_dynamic_prune_min=0.10,
+    acceptance_dynamic_prune_max=0.45,
+    acceptance_dynamic_keep_min=0.45,
+    acceptance_dynamic_keep_max=0.70,
 ):
     """
     Compute Turbo pass-1 scores, selected paths, and full-tree confidence gate.
@@ -948,6 +1187,16 @@ def plan_turbo_pruning(
         retrieve_indices,
         candidates=candidates,
     )
+    acceptance_prune_threshold, acceptance_keep_threshold = _resolve_acceptance_thresholds(
+        medusa_path_scores,
+        prune_threshold=acceptance_prune_threshold,
+        keep_threshold=acceptance_keep_threshold,
+        dynamic=acceptance_threshold_dynamic,
+        dynamic_prune_min=acceptance_dynamic_prune_min,
+        dynamic_prune_max=acceptance_dynamic_prune_max,
+        dynamic_keep_min=acceptance_dynamic_keep_min,
+        dynamic_keep_max=acceptance_dynamic_keep_max,
+    )
 
     qjl_valid_mask = retrieve_indices >= 0
     if qjl_valid_mask.shape[1] > 0:
@@ -955,7 +1204,13 @@ def plan_turbo_pruning(
         qjl_valid_mask[:, 0] = False
 
     if mandatory_indices is None:
-        mandatory_indices = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
+        mandatory_indices = _acceptance_anchor_path_indices(
+            retrieve_indices,
+            tree_indices,
+            medusa_path_scores,
+            max_long_paths=2,
+            keep_threshold=acceptance_keep_threshold,
+        )
 
     medusa_margin, medusa_std = _score_margin_stats(medusa_path_scores)
     if prescreen_margin_scale is not None and float(prescreen_margin_scale) >= 0.0:
@@ -972,12 +1227,16 @@ def plan_turbo_pruning(
             retrieve_indices=retrieve_indices,
             tree_indices=tree_indices,
             node_budget=node_budget,
+            mandatory_indices=mandatory_indices,
         )
         if not selected_paths_have_enough_node_gain(
             retrieve_indices,
             prescreen_selected_paths,
             full_node_count=tree_indices.numel(),
             min_node_prune_fraction=min_node_prune_fraction,
+        ) or not selected_paths_include_required(
+            prescreen_selected_paths,
+            mandatory_indices,
         ):
             return medusa_path_scores, path_lengths, mandatory_indices, True
 
@@ -1009,6 +1268,7 @@ def plan_turbo_pruning(
             retrieve_indices=retrieve_indices,
             tree_indices=tree_indices,
             node_budget=node_budget,
+            mandatory_indices=mandatory_indices,
         )
         verify_full_tree = should_skip_pruning_for_low_gain(
             selected_paths,
@@ -1019,6 +1279,9 @@ def plan_turbo_pruning(
             selected_paths,
             full_node_count=tree_indices.numel(),
             min_node_prune_fraction=min_node_prune_fraction,
+        ) or not selected_paths_include_required(
+            selected_paths,
+            mandatory_indices,
         )
         return medusa_path_scores, path_lengths, selected_paths, verify_full_tree
 
@@ -1032,6 +1295,7 @@ def plan_turbo_pruning(
                 retrieve_indices=retrieve_indices,
                 tree_indices=tree_indices,
                 node_budget=node_budget,
+                mandatory_indices=mandatory_indices,
             )
         verify_full_tree = should_verify_full_tree(
             medusa_path_scores,
@@ -1040,6 +1304,9 @@ def plan_turbo_pruning(
             prescreen_selected_paths,
             medusa_path_scores.shape[0],
             min_prune_fraction=min_prune_fraction,
+        ) or not selected_paths_include_required(
+            prescreen_selected_paths,
+            mandatory_indices,
         )
         return medusa_path_scores, path_lengths, prescreen_selected_paths, verify_full_tree
 
@@ -1076,15 +1343,26 @@ def plan_turbo_pruning(
         )
         if fast_plan is not None:
             approx_scores, selected_paths, verify_full_tree = fast_plan
-            if node_budget is not None and int(node_budget) > 0:
+            reselection_scores = _apply_acceptance_prune_threshold(
+                approx_scores,
+                medusa_path_scores,
+                prune_threshold=acceptance_prune_threshold,
+            )
+            if (
+                node_budget is not None
+                and int(node_budget) > 0
+                or float(acceptance_prune_threshold or 0.0) > 0.0
+                or int(mandatory_indices.numel()) > 2
+            ):
                 selected_paths = select_paths_for_pruning(
-                    approx_scores,
+                    reselection_scores,
                     keep_target=keep_target,
                     min_keep=min_keep,
                     max_keep=max_keep,
                     retrieve_indices=retrieve_indices,
                     tree_indices=tree_indices,
                     node_budget=node_budget,
+                    mandatory_indices=mandatory_indices,
                 )
             verify_full_tree = verify_full_tree or should_skip_pruning_for_low_gain(
                 selected_paths,
@@ -1095,6 +1373,9 @@ def plan_turbo_pruning(
                 selected_paths,
                 full_node_count=tree_indices.numel(),
                 min_node_prune_fraction=min_node_prune_fraction,
+            ) or not selected_paths_include_required(
+                selected_paths,
+                mandatory_indices,
             )
             return approx_scores, path_lengths, selected_paths, verify_full_tree
 
@@ -1117,14 +1398,20 @@ def plan_turbo_pruning(
     else:
         approx_scores = medusa_path_scores
 
-    selected_paths = select_paths_for_pruning(
+    selection_scores = _apply_acceptance_prune_threshold(
         approx_scores,
+        medusa_path_scores,
+        prune_threshold=acceptance_prune_threshold,
+    )
+    selected_paths = select_paths_for_pruning(
+        selection_scores,
         keep_target=keep_target,
         min_keep=min_keep,
         max_keep=max_keep,
         retrieve_indices=retrieve_indices,
         tree_indices=tree_indices,
         node_budget=node_budget,
+        mandatory_indices=mandatory_indices,
     )
     verify_full_tree = should_verify_full_tree(
         approx_scores,
@@ -1138,6 +1425,9 @@ def plan_turbo_pruning(
         selected_paths,
         full_node_count=tree_indices.numel(),
         min_node_prune_fraction=min_node_prune_fraction,
+    ) or not selected_paths_include_required(
+        selected_paths,
+        mandatory_indices,
     )
     return approx_scores, path_lengths, selected_paths, verify_full_tree
 
@@ -1159,6 +1449,13 @@ def plan_packed_kv_qjl_pruning(
     kv_qjl_weight=0.5,
     medusa_pool_fraction=0.70,
     medusa_anchor_keep=2,
+    acceptance_prune_threshold=0.0,
+    acceptance_keep_threshold=0.0,
+    acceptance_threshold_dynamic=False,
+    acceptance_dynamic_prune_min=0.10,
+    acceptance_dynamic_prune_max=0.45,
+    acceptance_dynamic_keep_min=0.45,
+    acceptance_dynamic_keep_max=0.70,
 ):
     """
     Select survivor paths using Medusa branch priors plus packed KV-QJL scores.
@@ -1178,22 +1475,47 @@ def plan_packed_kv_qjl_pruning(
         retrieve_indices,
         candidates=candidates,
     )
+    acceptance_prune_threshold, acceptance_keep_threshold = _resolve_acceptance_thresholds(
+        medusa_path_scores,
+        prune_threshold=acceptance_prune_threshold,
+        keep_threshold=acceptance_keep_threshold,
+        dynamic=acceptance_threshold_dynamic,
+        dynamic_prune_min=acceptance_dynamic_prune_min,
+        dynamic_prune_max=acceptance_dynamic_prune_max,
+        dynamic_keep_min=acceptance_dynamic_keep_min,
+        dynamic_keep_max=acceptance_dynamic_keep_max,
+    )
     kv_qjl_weight = float(max(0.0, min(1.0, kv_qjl_weight)))
+    total_paths = int(medusa_path_scores.shape[0])
+    anchor_keep = min(total_paths, max(0, int(medusa_anchor_keep)))
+    mandatory = _acceptance_anchor_path_indices(
+        retrieve_indices,
+        tree_indices,
+        medusa_path_scores,
+        max_long_paths=max(2, anchor_keep + 2),
+        keep_threshold=acceptance_keep_threshold,
+    )
     fused_scores = (
         (1.0 - kv_qjl_weight) * _normalize_scores(medusa_path_scores)
         + kv_qjl_weight * _normalize_scores(kv_qjl_path_scores)
     )
+    length_bonus = 0.15 * _normalize_scores(path_lengths.to(torch.float32))
+    ranked_scores = _apply_acceptance_prune_threshold(
+        fused_scores + length_bonus,
+        medusa_path_scores,
+        prune_threshold=acceptance_prune_threshold,
+    )
 
-    total_paths = int(fused_scores.shape[0])
-    selection_scores = fused_scores
+    selection_scores = ranked_scores
     pool_fraction = float(max(0.0, min(1.0, medusa_pool_fraction)))
-    anchor_keep = min(total_paths, max(0, int(medusa_anchor_keep)))
 
     if 0.0 < pool_fraction < 1.0 and total_paths > 1:
         pool_keep = int(math.ceil(float(total_paths) * pool_fraction))
-        pool_keep = min(total_paths, max(pool_keep, int(min_keep), int(max_keep), anchor_keep))
+        pool_keep = min(
+            total_paths,
+            max(pool_keep, int(min_keep), int(max_keep), anchor_keep, int(mandatory.numel())),
+        )
         medusa_pool = torch.topk(medusa_path_scores, k=pool_keep, dim=0).indices
-        mandatory = _mandatory_top1_path_indices(retrieve_indices, tree_indices)
         pool_parts = [medusa_pool]
         if mandatory.numel() > 0:
             pool_parts.append(mandatory)
@@ -1202,11 +1524,11 @@ def plan_packed_kv_qjl_pruning(
         medusa_pool = torch.unique(torch.cat(pool_parts))
         pool_mask = torch.zeros(total_paths, dtype=torch.bool, device=fused_scores.device)
         pool_mask[medusa_pool] = True
-        spread = fused_scores.std(unbiased=False) + 1.0
-        floor = fused_scores.min() - (10.0 * spread)
-        selection_scores = torch.where(pool_mask, fused_scores, floor)
+        spread = ranked_scores.std(unbiased=False) + 1.0
+        floor = ranked_scores.min() - (10.0 * spread)
+        selection_scores = torch.where(pool_mask, ranked_scores, floor)
     else:
-        selection_scores = fused_scores.clone()
+        selection_scores = ranked_scores.clone()
 
     if anchor_keep > 0 and total_paths > 1:
         anchors = torch.topk(medusa_path_scores, k=anchor_keep, dim=0).indices
@@ -1218,6 +1540,15 @@ def plan_packed_kv_qjl_pruning(
             dtype=selection_scores.dtype,
         )
         selection_scores[anchors] = anchor_boost
+    if mandatory.numel() > 0 and total_paths > 1:
+        required_boost = selection_scores.max() + torch.arange(
+            int(mandatory.numel()),
+            0,
+            -1,
+            device=selection_scores.device,
+            dtype=selection_scores.dtype,
+        )
+        selection_scores[mandatory] = required_boost
 
     fraction_keep = max(1, int(math.ceil(float(total_paths) * float(keep_fraction))))
     keep_target = min(int(keep_target), fraction_keep)
@@ -1231,6 +1562,7 @@ def plan_packed_kv_qjl_pruning(
         retrieve_indices=retrieve_indices,
         tree_indices=tree_indices,
         node_budget=node_budget,
+        mandatory_indices=mandatory,
     )
     verify_full_tree = should_skip_pruning_for_low_gain(
         selected_paths,
@@ -1241,6 +1573,9 @@ def plan_packed_kv_qjl_pruning(
         selected_paths,
         full_node_count=tree_indices.numel(),
         min_node_prune_fraction=min_node_prune_fraction,
+    ) or not selected_paths_include_required(
+        selected_paths,
+        mandatory,
     )
     return selection_scores, path_lengths, selected_paths, verify_full_tree
 
@@ -1295,7 +1630,14 @@ def build_cached_pruned_medusa_buffers(
             return None
         return materialize_pruned_medusa_buffers(full_tree_candidates, layout)
 
-    key = tuple(int(x) for x in selected_path_indices.detach().cpu().tolist())
+    key_weights = torch.arange(
+        1,
+        selected_path_indices.numel() + 1,
+        dtype=torch.long,
+        device=selected_path_indices.device,
+    )
+    key_hash = torch.sum((selected_path_indices.to(torch.long) + 1) * key_weights)
+    key = (int(selected_path_indices.numel()), int(key_hash.item()))
     layout = layout_cache.get(key)
     if layout is None:
         layout = build_pruned_medusa_layout(
@@ -1333,7 +1675,7 @@ def build_pruned_medusa_layout(
     selected_nodes = torch.unique(selected_paths[valid_mask])
     selected_nodes, _ = torch.sort(selected_nodes)
 
-    if selected_nodes.numel() == 0 or selected_nodes[0].item() != 0:
+    if selected_nodes.numel() == 0:
         selected_nodes = torch.cat(
             [
                 torch.zeros((1,), dtype=torch.long, device=full_retrieve_indices.device),
@@ -1343,7 +1685,7 @@ def build_pruned_medusa_layout(
         )
 
     node_map = torch.full(
-        (int(selected_nodes.max().item()) + 1,),
+        (int(full_medusa_position_ids.numel()),),
         0,
         dtype=torch.long,
         device=full_retrieve_indices.device,
@@ -1439,6 +1781,7 @@ def tree_decoding(
     return_hidden=False,
     gather_paths=True,
     compute_medusa_logits=True,
+    compute_orig_logits=True,
     fast_attention_mask=False,
 ):
     """
@@ -1477,15 +1820,28 @@ def tree_decoding(
 
     # Use the model to decode the tree candidates.
     # The model is expected to return logits for the Medusa structure, original logits, and possibly other outputs.
-    tree_medusa_logits, outputs, tree_logits = model(
-        tree_candidates,
-        attention_mask=attention_mask,
-        output_orig=True,
-        past_key_values=past_key_values,
-        position_ids=position_ids,
-        medusa_forward=True,
-        return_medusa_logits=compute_medusa_logits,
-    )
+    if compute_orig_logits:
+        tree_medusa_logits, outputs, tree_logits = model(
+            tree_candidates,
+            attention_mask=attention_mask,
+            output_orig=True,
+            past_key_values=past_key_values,
+            position_ids=position_ids,
+            medusa_forward=True,
+            return_medusa_logits=compute_medusa_logits,
+        )
+    else:
+        tree_medusa_logits, outputs = model(
+            tree_candidates,
+            attention_mask=attention_mask,
+            output_orig=False,
+            return_outputs=True,
+            past_key_values=past_key_values,
+            position_ids=position_ids,
+            medusa_forward=True,
+            return_medusa_logits=compute_medusa_logits,
+        )
+        tree_logits = None
     
     if not gather_paths:
         if return_hidden:
@@ -1493,7 +1849,7 @@ def tree_decoding(
         return tree_medusa_logits, tree_logits, outputs
 
     # Reorder the obtained logits based on the retrieve_indices to ensure consistency with some reference ordering.
-    logits = tree_logits[0, retrieve_indices]
+    logits = None if tree_logits is None else tree_logits[0, retrieve_indices]
     medusa_logits = None if tree_medusa_logits is None else tree_medusa_logits[:, 0, retrieve_indices]
     if return_hidden:
         hidden_paths = outputs[0][0, retrieve_indices]
@@ -1541,6 +1897,83 @@ def evaluate_posterior_greedy_from_tree(
     else:
         best_candidate = torch.argmax(candidates_accept_length).to(torch.long)
     return best_candidate, accept_length
+
+
+def lm_head_argmax(hidden_states, lm_head_weight, chunk_size=4096, prefer_triton=True):
+    """
+    Compute argmax(hidden @ lm_head.T) without materializing the full logits.
+
+    The Triton path stores only a small `[nodes, vocab_blocks]` partial-max
+    buffer. The fallback streams vocab chunks through regular matmuls.
+    """
+    if hidden_states.dim() == 3:
+        if hidden_states.shape[0] != 1:
+            return torch.argmax(torch.matmul(hidden_states, lm_head_weight.t()), dim=-1)
+        hidden_states = hidden_states[0]
+    if hidden_states.dim() != 2 or lm_head_weight.dim() != 2:
+        return torch.argmax(torch.matmul(hidden_states, lm_head_weight.t()), dim=-1)
+
+    if prefer_triton and lm_head_argmax_triton is not None:
+        node_argmax = lm_head_argmax_triton(hidden_states, lm_head_weight)
+        if node_argmax is not None:
+            return node_argmax
+
+    vocab_size = int(lm_head_weight.shape[0])
+    chunk_size = int(max(1, chunk_size))
+    best_vals = None
+    best_ids = None
+    for start in range(0, vocab_size, chunk_size):
+        end = min(start + chunk_size, vocab_size)
+        scores = torch.matmul(hidden_states, lm_head_weight[start:end].t())
+        vals, ids = torch.max(scores, dim=-1)
+        ids = ids + start
+        if best_vals is None:
+            best_vals = vals
+            best_ids = ids
+        else:
+            better = vals > best_vals
+            best_vals = torch.where(better, vals, best_vals)
+            best_ids = torch.where(better, ids, best_ids)
+    return best_ids
+
+
+def evaluate_posterior_greedy_from_argmax(
+    node_argmax,
+    candidates,
+    retrieve_indices,
+    path_lengths=None,
+):
+    """
+    Greedy posterior evaluation when verifier node argmax ids are already known.
+    """
+    if greedy_accept_from_argmax_triton is not None:
+        fast_result = greedy_accept_from_argmax_triton(
+            node_argmax,
+            candidates,
+            retrieve_indices,
+            path_lengths=path_lengths,
+        )
+        if fast_result is not None:
+            return fast_result
+
+    source_nodes = retrieve_indices[:, :-1].clamp_min(0)
+    expected_tokens = node_argmax[source_nodes].to(candidates.dtype)
+    posterior_mask = (candidates[:, 1:] == expected_tokens).int()
+    if path_lengths is not None:
+        valid_pos = (
+            torch.arange(posterior_mask.shape[1], device=posterior_mask.device)
+            .unsqueeze(0)
+            < path_lengths.unsqueeze(1)
+        )
+        posterior_mask = posterior_mask * valid_pos.int()
+    candidates_accept_length = (torch.cumprod(posterior_mask, dim=1)).sum(dim=1)
+    accept_length = candidates_accept_length.max()
+    if accept_length == 0:
+        best_candidate = torch.tensor(0, dtype=torch.long, device=candidates.device)
+    else:
+        best_candidate = torch.argmax(candidates_accept_length).to(torch.long)
+    return best_candidate, accept_length
+
 
 def get_nucleus_posterior_mask(logits, candidates, temperature, top_p):
     """
@@ -1870,6 +2303,8 @@ def update_inference_inputs_from_tree(
     current_length_data,
     past_key_values=None,
     input_ids_buffer=None,
+    lm_head=None,
+    tree_hidden=None,
 ):
     """
     Update inference state using raw tree-node logits instead of gathered path logits.
@@ -1916,7 +2351,13 @@ def update_inference_inputs_from_tree(
         current_length_data.fill_(prev_input_len + select_indices.shape[0])
 
     node_idx = retrieve_indices[best_candidate, accept_len_int].reshape(1)
-    logits = tree_logits.index_select(1, node_idx)
+    if tree_logits is None:
+        if lm_head is None or tree_hidden is None:
+            raise ValueError("lm_head and tree_hidden are required when tree_logits is None.")
+        accepted_hidden = tree_hidden.index_select(0, node_idx)
+        logits = lm_head(accepted_hidden.unsqueeze(0))
+    else:
+        logits = tree_logits.index_select(1, node_idx)
     medusa_logits = None if tree_medusa_logits is None else tree_medusa_logits.index_select(2, node_idx)
     new_token += accept_len_int + 1
 
