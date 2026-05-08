@@ -1,0 +1,3 @@
+prompt,mode,tokens,total_s,tps,prefix_vs_medusa,peak_alloc_mb,notes
+cuda_fusion_short,medusa_base,48,0.7634,62.88,1.0000,2856.3,baseline Medusa tree decode
+cuda_fusion_short,turbo_vq_b8_res128_strict_fused_append,49,3.6509,13.42,0.2558,2846.9,strict compressed TurboVQ fused append+attention smoke

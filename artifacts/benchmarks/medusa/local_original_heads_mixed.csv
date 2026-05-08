@@ -1,0 +1,298 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,171,37,2.1375,2.1375,25.0,1.3183558599994285,1.3183317519979028,129.7070124905988,1.0,1.0,2754.267578125,2872.0,4.46875,2.618408203125,1.7066666666666668,0,0,1520,80,0,80,0,171,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main() {
+    int n, m, k;
+    double alpha, beta;
+    double A[100][100], B[100][100], C[100][100];
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &n);
+    MPI_Comm_rank(MPI_COMM_WORLD, &"
+hpc,turbo_best_full_tree,171,37,2.1375,2.1375,25.0,1.2578357310012507,1.2578113909985404,135.9477996891392,1.0481144934164044,1.0,2702.2607421875,2812.0,4.46875,2.618408203125,1.7066666666666668,0,0,1520,80,0,80,0,171,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main() {
+    int n, m, k;
+    double alpha, beta;
+    double A[100][100], B[100][100], C[100][100];
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &n);
+    MPI_Comm_rank(MPI_COMM_WORLD, &"
+hpc,turbo_fast_24,171,37,2.1375,2.1375,25.0,1.259693263000372,1.2596711709993542,135.74733232494034,1.0465689535080407,1.0,2702.2607421875,2812.0,4.46875,2.618408203125,1.7066666666666668,0,0,1520,80,0,80,0,171,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main() {
+    int n, m, k;
+    double alpha, beta;
+    double A[100][100], B[100][100], C[100][100];
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &n);
+    MPI_Comm_rank(MPI_COMM_WORLD, &"
+systems,medusa_base,159,29,1.9875,1.9875,25.0,1.312422308998066,1.3123987889994169,121.15002839397353,1.0,1.0,2755.39208984375,2872.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,159,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+In weak scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a small number of processes or threads per node.
+
+Here are some practical examples of strong scaling and weak scaling:
+
+Strong Scaling:
+- Amazon Elastic Compute Cloud (EC2)
+- Google Cloud Platform
+- Microsoft Azure
+"
+systems,turbo_best_full_tree,159,29,1.9875,1.9875,25.0,1.2582820819989138,1.2582593469996937,126.36276259089038,1.0430270984334014,1.0,2702.111328125,2812.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,159,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+In weak scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a small number of processes or threads per node.
+
+Here are some practical examples of strong scaling and weak scaling:
+
+Strong Scaling:
+- Amazon Elastic Compute Cloud (EC2)
+- Google Cloud Platform
+- Microsoft Azure
+"
+systems,turbo_fast_24,159,29,1.9875,1.9875,25.0,1.258315532002598,1.2582924630005436,126.35940346929749,1.0429993714766896,1.0,2702.111328125,2812.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,159,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+In weak scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a small number of processes or threads per node.
+
+Here are some practical examples of strong scaling and weak scaling:
+
+Strong Scaling:
+- Amazon Elastic Compute Cloud (EC2)
+- Google Cloud Platform
+- Microsoft Azure
+"
+chat,medusa_base,187,34,2.3375,2.3375,25.0,1.3191567089997989,1.3191334610019112,141.75722923911422,1.0,1.0,2754.26806640625,2872.0,4.748046875,2.7820587158203125,1.7066666666666668,0,0,1520,80,0,80,0,186,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems overwhelming, break it down into smaller, more manageable steps. This will help you stay on track and avoid feeling overwhelmed.
+
+3. Create a schedule: Create a schedule for completing the assignment. This will help you stay on track and avoid procrastination.
+
+4. Find a support system: Seek out a friend or family member who can help you stay motivated and accountable. This can be a great way to stay on track and avoid procrastination.
+
+5. Practice time management: Learn how to manage your time effectively. This will help you stay on track and avoid feeling overwhelmed.
+
+"
+chat,turbo_best_full_tree,187,34,2.3375,2.3375,25.0,1.2631321620028757,1.26310839800135,148.0446825955923,1.0443536699343388,1.0,2702.35498046875,2812.0,4.748046875,2.7820587158203125,1.7066666666666668,0,0,1520,80,0,80,0,186,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems overwhelming, break it down into smaller, more manageable steps. This will help you stay on track and avoid feeling overwhelmed.
+
+3. Create a schedule: Create a schedule for completing the assignment. This will help you stay on track and avoid procrastination.
+
+4. Find a support system: Seek out a friend or family member who can help you stay motivated and accountable. This can be a great way to stay on track and avoid procrastination.
+
+5. Practice time management: Learn how to manage your time effectively. This will help you stay on track and avoid feeling overwhelmed.
+
+"
+chat,turbo_fast_24,187,34,2.3375,2.3375,25.0,1.2643511480018788,1.2643249970024044,147.90194978311683,1.0433467878639033,1.0,2702.35498046875,2812.0,4.748046875,2.7820587158203125,1.7066666666666668,0,0,1520,80,0,80,0,186,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems overwhelming, break it down into smaller, more manageable steps. This will help you stay on track and avoid feeling overwhelmed.
+
+3. Create a schedule: Create a schedule for completing the assignment. This will help you stay on track and avoid procrastination.
+
+4. Find a support system: Seek out a friend or family member who can help you stay motivated and accountable. This can be a great way to stay on track and avoid procrastination.
+
+5. Practice time management: Learn how to manage your time effectively. This will help you stay on track and avoid feeling overwhelmed.
+
+"
+summarization,medusa_base,101,33,1.2625,1.8363636363636364,25.0,0.9059740349985077,0.9059483189994353,111.48222366015861,1.0,1.0,2754.26416015625,2870.0,2.87890625,1.686859130859375,1.7066666666666668,0,0,1045,55,0,55,0,103,24,3,0,0,0,0,0,0,0,0,1045,0,0,1375,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting fossil fuels. By storing excess energy during periods of high production, renewable energy can be used during periods of low production, reducing the need for expensive and polluting backup power. This helps to ensure a stable and reliable supply of electricity, reducing the risk of blackouts and outages."
+summarization,turbo_best_full_tree,101,33,1.2625,1.8363636363636364,25.0,0.8641237709998677,0.8641009929997381,116.88140448113592,1.0484308676640333,1.0,2701.70263671875,2810.0,2.87890625,1.686859130859375,1.7066666666666668,0,0,1045,55,0,55,0,103,24,3,0,0,0,0,0,0,0,0,1045,0,0,1375,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting fossil fuels. By storing excess energy during periods of high production, renewable energy can be used during periods of low production, reducing the need for expensive and polluting backup power. This helps to ensure a stable and reliable supply of electricity, reducing the risk of blackouts and outages."
+summarization,turbo_fast_24,101,33,1.2625,1.8363636363636364,25.0,0.8646029779993114,0.8645798190009373,116.81662285470458,1.047849773886887,1.0,2701.70263671875,2810.0,2.87890625,1.686859130859375,1.7066666666666668,0,0,1045,55,0,55,0,103,24,3,0,0,0,0,0,0,0,0,1045,0,0,1375,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting fossil fuels. By storing excess energy during periods of high production, renewable energy can be used during periods of low production, reducing the need for expensive and polluting backup power. This helps to ensure a stable and reliable supply of electricity, reducing the risk of blackouts and outages."
+reasoning,medusa_base,39,56,0.4875,2.0526315789473686,25.0,0.3226331570003822,0.32260849800150027,120.88032229109608,1.0,1.0,2754.26220703125,2866.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,361,19,0,19,0,40,24,3,0,0,0,0,0,0,0,0,361,0,0,475,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+reasoning,turbo_best_full_tree,39,56,0.4875,2.0526315789473686,25.0,0.3062680930015631,0.3062449329991068,127.33941566613325,1.0534337868448331,1.0,2702.134765625,2812.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,361,19,0,19,0,40,24,3,0,0,0,0,0,0,0,0,361,0,0,475,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+reasoning,turbo_fast_24,39,56,0.4875,2.0526315789473686,25.0,0.30648352000207524,0.30646255499959807,127.24990890125487,1.052693329149305,1.0,2702.134765625,2812.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,361,19,0,19,0,40,24,3,0,0,0,0,0,0,0,0,361,0,0,475,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+code,medusa_base,198,33,2.475,2.475,25.0,1.3239814110020234,1.3239551940023375,149.5489274657931,1.0,1.0,2754.2685546875,2872.0,4.962890625,2.9079437255859375,1.7066666666666668,0,0,1520,80,0,80,0,199,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups = {}
+    
+    # Loop through each string in the list
+    for string in strings:
+        # Split the string into individual characters
+        characters = string.split()
+        
+        # Loop through each character in the list
+        for character in characters:
+            # Check if the character is a letter
+            if character.isalpha():
+                # If it is, add the group to the dictionary
+                if character not in groups:
+                    groups[character] = []
+                groups[character].append(string)
+    
+    # Return the dictionary of groups
+    return groups
+```
+
+Here's an example usage:
+
+```python
+strings = [""apple"", ""ban"
+code,turbo_best_full_tree,198,33,2.475,2.475,25.0,1.2668688150006346,1.2668446979987493,156.2908468939626,1.0450816969564132,1.0,2702.44140625,2812.0,4.962890625,2.9079437255859375,1.7066666666666668,0,0,1520,80,0,80,0,199,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups = {}
+    
+    # Loop through each string in the list
+    for string in strings:
+        # Split the string into individual characters
+        characters = string.split()
+        
+        # Loop through each character in the list
+        for character in characters:
+            # Check if the character is a letter
+            if character.isalpha():
+                # If it is, add the group to the dictionary
+                if character not in groups:
+                    groups[character] = []
+                groups[character].append(string)
+    
+    # Return the dictionary of groups
+    return groups
+```
+
+Here's an example usage:
+
+```python
+strings = [""apple"", ""ban"
+code,turbo_fast_24,198,33,2.475,2.475,25.0,1.2680579960033356,1.2680323620006675,156.14427780437194,1.0441016224612338,1.0,2702.44140625,2812.0,4.962890625,2.9079437255859375,1.7066666666666668,0,0,1520,80,0,80,0,199,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups = {}
+    
+    # Loop through each string in the list
+    for string in strings:
+        # Split the string into individual characters
+        characters = string.split()
+        
+        # Loop through each character in the list
+        for character in characters:
+            # Check if the character is a letter
+            if character.isalpha():
+                # If it is, add the group to the dictionary
+                if character not in groups:
+                    groups[character] = []
+                groups[character].append(string)
+    
+    # Return the dictionary of groups
+    return groups
+```
+
+Here's an example usage:
+
+```python
+strings = [""apple"", ""ban"
+creative,medusa_base,153,35,1.9125,1.9125,25.0,1.3207276870016358,1.3207046030001948,115.84522797984661,1.0,1.0,2754.2666015625,2872.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,153,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities.
+In this opening paragraph, the moon is described as a quiet, still place, a place of solitude and reflection. The use of the word ""quiet"" creates a sense of calm and peacefulness, while the word ""still"" emphasizes the lack of movement or activity. The use of the word ""place"" emphasizes the idea that the moon is a place of constant activity, where people work and live. The use of the word ""reflection"" suggests that the moon is a place where people reflect on their lives and their"
+creative,turbo_best_full_tree,153,35,1.9125,1.9125,25.0,1.2645206339984725,1.2644892940006685,120.99446690419511,1.044449296825971,1.0,2702.111328125,2812.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,153,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities.
+In this opening paragraph, the moon is described as a quiet, still place, a place of solitude and reflection. The use of the word ""quiet"" creates a sense of calm and peacefulness, while the word ""still"" emphasizes the lack of movement or activity. The use of the word ""place"" emphasizes the idea that the moon is a place of constant activity, where people work and live. The use of the word ""reflection"" suggests that the moon is a place where people reflect on their lives and their"
+creative,turbo_fast_24,153,35,1.9125,1.9125,25.0,1.262009637997835,1.2619875729978958,121.23520723877584,1.0465274172524992,1.0,2702.111328125,2812.0,4.0390625,2.36663818359375,1.7066666666666668,0,0,1520,80,0,80,0,153,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities.
+In this opening paragraph, the moon is described as a quiet, still place, a place of solitude and reflection. The use of the word ""quiet"" creates a sense of calm and peacefulness, while the word ""still"" emphasizes the lack of movement or activity. The use of the word ""place"" emphasizes the idea that the moon is a place of constant activity, where people work and live. The use of the word ""reflection"" suggests that the moon is a place where people reflect on their lives and their"
+instruction,medusa_base,191,35,2.3875,2.3875,25.0,1.3232629560006899,1.323240101999545,144.34016998198234,1.0,1.0,2754.2685546875,2872.0,4.85546875,2.845001220703125,1.7066666666666668,0,0,1520,80,0,80,0,191,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Tuesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Wednesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 1"
+instruction,turbo_best_full_tree,191,35,2.3875,2.3875,25.0,1.2670958190028614,1.2670714420019067,150.73840283863225,1.0443274582359754,1.0,2702.39453125,2812.0,4.85546875,2.845001220703125,1.7066666666666668,0,0,1520,80,0,80,0,191,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Tuesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Wednesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 1"
+instruction,turbo_fast_24,191,35,2.3875,2.3875,25.0,1.2687477190011123,1.268721545002336,150.5421425706087,1.0429677517312093,1.0,2702.39453125,2812.0,4.85546875,2.845001220703125,1.7066666666666668,0,0,1520,80,0,80,0,191,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Tuesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15 minutes of working on a machine learning project (e.g., building a simple neural network model, implementing a machine learning algorithm, etc.)
+
+Wednesday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 1"
+technical_qa,medusa_base,170,31,2.125,2.125,25.0,1.3238976940010616,1.3238722899986897,128.40871373242507,1.0,1.0,2754.26708984375,2872.0,4.318359375,2.5302886962890625,1.7066666666666668,0,0,1520,80,0,80,0,170,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in milliseconds (ms) or microseconds (us). The longer the latency, the slower the response time. For example, a web server that takes 10 ms to process a request may have a latency of 10 ms.
+
+Throughput:
+Throughput is the number of requests that a web server can process in a given time period. It is measured in requests per second (rps) or kilo-requests per second (kRPS). The higher the throughput, the more requests a web server can handle in a given time period. For"
+technical_qa,turbo_best_full_tree,170,31,2.125,2.125,25.0,1.2696431900003518,1.2696204240019142,133.8958861347123,1.0427320875880843,1.0,2702.20556640625,2812.0,4.318359375,2.5302886962890625,1.7066666666666668,0,0,1520,80,0,80,0,170,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in milliseconds (ms) or microseconds (us). The longer the latency, the slower the response time. For example, a web server that takes 10 ms to process a request may have a latency of 10 ms.
+
+Throughput:
+Throughput is the number of requests that a web server can process in a given time period. It is measured in requests per second (rps) or kilo-requests per second (kRPS). The higher the throughput, the more requests a web server can handle in a given time period. For"
+technical_qa,turbo_fast_24,170,31,2.125,2.125,25.0,1.2671390180003073,1.2671161289981683,134.16049666616672,1.0447927774257366,1.0,2702.20556640625,2812.0,4.318359375,2.5302886962890625,1.7066666666666668,0,0,1520,80,0,80,0,170,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in milliseconds (ms) or microseconds (us). The longer the latency, the slower the response time. For example, a web server that takes 10 ms to process a request may have a latency of 10 ms.
+
+Throughput:
+Throughput is the number of requests that a web server can process in a given time period. It is measured in requests per second (rps) or kilo-requests per second (kRPS). The higher the throughput, the more requests a web server can handle in a given time period. For"
+comparison,medusa_base,180,33,2.25,2.25,25.0,1.325853313999687,1.3258295750019897,135.7616246830473,1.0,1.0,2754.26806640625,2872.0,4.576171875,2.6813507080078125,1.7066666666666668,0,0,1520,80,0,80,0,181,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores data in a file system, while PostgreSQL stores data in a relational database. SQLite is a lightweight option that can store data in a single file, while PostgreSQL is a more scalable option that can store data in multiple files.
+
+2. Performance: SQLite is known for its fast performance, especially when dealing with small datasets. PostgreSQL, on the other hand, is known for its high performance and scalability, especially when dealing with large datasets.
+
+3. Security: SQLite is designed to be secure by default, with built-in encryption and authentication features. PostgreSQL, on the other hand, is more"
+comparison,turbo_best_full_tree,180,33,2.25,2.25,25.0,1.269245277999289,1.2692214380003861,141.81656069166863,1.0445997609615925,1.0,2702.30029296875,2812.0,4.576171875,2.6813507080078125,1.7066666666666668,0,0,1520,80,0,80,0,181,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores data in a file system, while PostgreSQL stores data in a relational database. SQLite is a lightweight option that can store data in a single file, while PostgreSQL is a more scalable option that can store data in multiple files.
+
+2. Performance: SQLite is known for its fast performance, especially when dealing with small datasets. PostgreSQL, on the other hand, is known for its high performance and scalability, especially when dealing with large datasets.
+
+3. Security: SQLite is designed to be secure by default, with built-in encryption and authentication features. PostgreSQL, on the other hand, is more"
+comparison,turbo_fast_24,180,33,2.25,2.25,25.0,1.2674194300016097,1.2673933590012894,142.0208620281065,1.0461046143169852,1.0,2702.30029296875,2812.0,4.576171875,2.6813507080078125,1.7066666666666668,0,0,1520,80,0,80,0,181,24,3,0,0,0,0,0,0,0,0,1520,0,0,2000,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores data in a file system, while PostgreSQL stores data in a relational database. SQLite is a lightweight option that can store data in a single file, while PostgreSQL is a more scalable option that can store data in multiple files.
+
+2. Performance: SQLite is known for its fast performance, especially when dealing with small datasets. PostgreSQL, on the other hand, is known for its high performance and scalability, especially when dealing with large datasets.
+
+3. Security: SQLite is designed to be secure by default, with built-in encryption and authentication features. PostgreSQL, on the other hand, is more"

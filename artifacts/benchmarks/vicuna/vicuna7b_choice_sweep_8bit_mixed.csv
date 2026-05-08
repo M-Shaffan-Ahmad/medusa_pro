@@ -1,0 +1,552 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,160,37,1.7777777777777777,2.0779220779220777,64.0,14.118040505999943,14.117992070000128,11.33301749148563,1.0,1.0,9311.35400390625,9352.0,98.5,53.482421875,1.841726618705036,0,0,63,0,3234,77,0,77,0,160,63,4,0,0,0,0,0,0,0,0,3234,0,0,4928,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+
+using namespace std;
+
+int main(int argc, char *argv[]) {
+    MPI_Init(&argc, &argv);
+
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int *A, *B, *C, *D;
+    A = (int"
+hpc,turbo_fast_24,160,37,1.7777777777777777,2.1052631578947367,25.0,13.414183898999909,13.414143548000084,11.927673066412096,1.0524710718370658,0.45054945054945056,9151.48388671875,9218.0,98.5,53.482421875,1.841726618705036,0,0,24,0,1140,76,0,76,0,160,24,4,0,0,0,0,0,0,0,0,1140,0,0,1900,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <time.h>
+
+const int BLOCK_SIZE = 1024;
+
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  int *"
+hpc,turbo_fast_32,160,37,1.7777777777777777,2.1621621621621623,33.0,13.204408694999984,13.204364529000031,12.117165084460467,1.0691914217518819,0.45054945054945056,9152.79345703125,9218.0,98.5,53.482421875,1.841726618705036,0,0,32,0,1628,74,0,74,0,160,32,4,0,0,0,0,0,0,0,0,1628,0,0,2442,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <time.h>
+
+using namespace std;
+
+int main(int argc, char *argv[]) {
+    MPI_Init(&argc, &argv);
+
+    int rank, size;
+    int *world_size, *world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+"
+hpc,turbo_fast_40,160,37,1.7777777777777777,2.051282051282051,41.0,14.393836869000097,14.393750123000245,11.11586864962954,0.9808392740927796,0.45054945054945056,9154.3623046875,9220.0,98.5,53.482421875,1.841726618705036,0,0,40,0,2184,78,0,78,0,160,40,4,0,0,0,0,0,0,0,0,2184,0,0,3198,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <time.h>
+
+#define BLOCKSIZE 1024
+
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  int *A, *"
+hpc,turbo_fast_63,160,37,1.7777777777777777,2.0779220779220777,64.0,14.009896020999804,14.009852293999757,11.420498750324182,1.0077191497237408,1.0,9160.12646484375,9220.0,98.5,53.482421875,1.841726618705036,0,0,63,0,3234,77,0,77,0,160,63,4,0,0,0,0,0,0,0,0,3234,0,0,4928,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+
+using namespace std;
+
+int main(int argc, char *argv[]) {
+    MPI_Init(&argc, &argv);
+
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int *A, *B, *C, *D;
+    A = (int"
+hpc,turbo_adaptive_24_40,160,37,1.7777777777777777,2.1052631578947367,26.68421052631579,13.467782692000128,13.467724586000259,11.88020356870178,1.048282470015355,0.45054945054945056,9152.9873046875,9220.0,98.5,53.482421875,1.841726618705036,40,8,24,76,1244,76,0,76,0,160,24,4,0,0,0,0,0,0,0,0,1244,0,0,2028,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <time.h>
+
+const int BLOCK_SIZE = 1024;
+
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  int *"
+hpc,turbo_adaptive_32_63,160,37,1.7777777777777777,2.051282051282051,34.58974358974359,13.948258929000076,13.948206660999858,11.470965717975103,1.0121722415581826,0.45054945054945056,9156.29638671875,9220.0,98.5,53.482421875,1.841726618705036,63,4,32,78,1796,78,0,78,0,160,32,4,0,0,0,0,0,0,0,0,1796,0,0,2698,"Here is a concise C++ MPI+OpenMP blocked GEMM example using the overlap strategy:
+```cpp
+#include <mpi.h>
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <time.h>
+
+using namespace std;
+
+int main(int argc, char *argv[]) {
+    MPI_Init(&argc, &argv);
+
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int *A, *B, *C, *"
+systems,medusa_base,160,29,1.7777777777777777,2.4615384615384617,64.0,12.531779394000296,12.531687454000348,12.767540424195582,1.0,1.0,9311.33154296875,9352.0,94.5,51.310546875,1.841726618705036,0,0,63,0,2730,65,0,65,0,160,63,4,0,0,0,0,0,0,0,0,2730,0,0,4160,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors involved in the system increases.
+
+**Strong Scaling**
+
+In strong scaling, the performance of a distributed system improves as the number of nodes or processors increases. This is because each node or processor can handle more work, and the system can distribute the workload more evenly. As a result, the overall performance of the system increases.
+
+For example, if you have a distributed system with 10 nodes, and each node can process 100 tasks per second, the system can process 1,000 tasks per second. If you add another 10 nodes to the system, each node can"
+systems,turbo_fast_24,160,29,1.7777777777777777,2.1052631578947367,25.0,14.055528191000121,14.0554831620002,11.38342137170266,0.8915907836195374,0.20512820512820512,9154.28076171875,9218.0,94.5,51.310546875,1.841726618705036,0,0,24,0,1140,76,0,76,0,160,24,4,0,0,0,0,0,0,0,0,1140,0,0,1900,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors in the system increases.
+
+**Strong Scaling**: In strong scaling, the total processing power of the system increases as more nodes or processors are added. This means that each individual node or processor can perform more work, and the overall performance of the system improves. As a result, the system can handle more workload, and the performance of individual tasks or jobs improves.
+
+For example, if you have a distributed system with 10 nodes, and each node has two CPU cores, the total processing power of the system is 20 cores. If you add another 10 nodes to the system, each with two"
+systems,turbo_fast_32,160,29,1.7777777777777777,2.191780821917808,33.0,13.724522849000095,13.724476921000132,11.6579644888461,0.9130939947331796,0.20512820512820512,9158.56396484375,9218.0,94.5,51.310546875,1.841726618705036,0,0,32,0,1606,73,0,73,0,160,32,4,0,0,0,0,0,0,0,0,1606,0,0,2409,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors in the system increases.
+
+**Strong Scaling**: In strong scaling, the total processing power of the system increases as more nodes or processors are added. This means that each node or processor is able to perform more work as the number of nodes or processors increases. As a result, the overall performance of the system improves with more nodes or processors.
+
+For example, if you have a distributed system with 10 nodes, and each node has 100 CPU cores, the total processing power of the system is 1000 CPU cores. If you add another 10 nodes to the system, each"
+systems,turbo_fast_40,160,29,1.7777777777777777,2.1621621621621623,41.0,14.00083167799994,14.000761374999911,11.427892548084435,0.8950739271933379,0.20512820512820512,9158.75146484375,9220.0,94.5,51.310546875,1.841726618705036,0,0,40,0,2072,74,0,74,0,160,40,4,0,0,0,0,0,0,0,0,2072,0,0,3034,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors in the system increases.
+
+**Strong Scaling**: In strong scaling, the total computational power of the system increases as more nodes or processors are added to the system. This means that each node or processor is assigned a larger portion of the overall workload, and the system can handle more complex tasks as the number of nodes or processors increases. In strong scaling, the performance of the system improves as the number of nodes or processors increases, up to a certain point where the communication overhead between nodes becomes a bottleneck.
+
+**Weak Scaling**: In weak scaling, the total computational power of the system"
+systems,turbo_fast_63,160,29,1.7777777777777777,2.4615384615384617,64.0,12.32252290400038,12.322458892000213,12.984354035816615,1.0169816271903203,0.7228571428571429,9163.44189453125,9220.0,94.5,51.310546875,1.841726618705036,0,0,63,0,2730,65,0,65,0,160,63,4,0,0,0,0,0,0,0,0,2730,0,0,4160,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors involved in the system increases.
+
+**Strong Scaling**
+
+In strong scaling, the performance of a distributed system improves as the number of nodes or processors increases. This is because each node or processor can handle more work, and the system can distribute the workload more evenly. As a result, the overall performance of the system increases.
+
+For example, if a distributed system has 10 nodes and each node can process 100 requests per second, the total throughput of the system is 1000 requests per second. If the system is scaled up to 100 nodes, each"
+systems,turbo_adaptive_24_40,160,29,1.7777777777777777,2.1052631578947367,27.526315789473685,14.545989736000138,14.545937551999941,10.999595277041413,0.861528133969816,0.20512820512820512,9155.904296875,9218.0,94.5,51.310546875,1.841726618705036,40,12,24,76,1296,76,0,76,0,160,24,4,0,0,0,0,0,0,0,0,1296,0,0,2092,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors in the system increases.
+
+**Strong Scaling**: In strong scaling, the total processing power of the system increases as more nodes or processors are added. This means that each individual node or processor can handle more workload, and the overall performance of the system improves. As a result, the system can process more data or perform more complex tasks in the same amount of time.
+
+For example, if you have a distributed system with 10 nodes, and each node has two CPU cores, the total processing power of the system is 20 cores. If you add another 10 nodes to the system, each with two"
+systems,turbo_adaptive_32_63,160,29,1.7777777777777777,2.1333333333333333,37.96,14.076817078000204,14.076766932999817,11.366205805860346,0.8902423981615452,0.20512820512820512,9159.87646484375,9220.0,94.5,51.310546875,1.841726618705036,63,12,32,75,1890,75,0,75,0,160,32,4,0,0,0,0,0,0,0,0,1890,0,0,2847,"Strong scaling and weak scaling are two concepts used to describe the performance of distributed systems as the number of nodes or processors in the system increases.
+
+**Strong Scaling**: In strong scaling, the total processing power of the system increases as more nodes or processors are added. This means that each node or processor is assigned a larger portion of the total workload, and the performance of each node or processor improves as the number of nodes or processors increases.
+
+For example, if a distributed system has 10 nodes with 100 processors each, and the total processing power of the system is 1000 processors. If we add another 10 nodes with 100 processors each, the total processing power"
+chat,medusa_base,160,34,1.7777777777777777,2.962962962962963,64.0,10.704420456999742,10.70437049200018,14.94709598177024,1.0,1.0,9311.35498046875,9352.0,97.0,52.66796875,1.841726618705036,0,0,63,0,2268,54,0,54,0,160,63,4,0,0,0,0,0,0,0,0,2268,0,0,3456,"Hi there! I understand how difficult it can be to overcome procrastination, but I'm here to help. Here are some tips that might help you:
+
+1. Break the task into smaller, manageable chunks. This can make the task feel less overwhelming and more achievable.
+2. Set a specific deadline for yourself. This can help you stay motivated and accountable.
+3. Create a comfortable and distraction-free work environment. This can help you stay focused and avoid distractions.
+4. Use the Pomodoro technique. This involves working for a set amount of time (usually 25 minutes), followed by a short break. This can help you stay focused and avoid burnout.
+5."
+chat,turbo_fast_24,153,34,1.7,1.7,25.0,16.01671608300012,16.01666781899985,9.552519955223012,0.6390886876536717,0.09191176470588236,9153.15380859375,9218.0,93.5,50.767578125,1.841726618705036,0,0,24,0,1350,90,0,90,0,153,24,4,0,0,0,0,0,0,0,0,1350,0,0,2250,"Hi there! I understand how difficult it can be to get started on a programming assignment, especially when you' The 2019-2024 Outlook for Non-Alcoholic Beverages in the United States
+This study covers the latent demand outlook for non-alcoholic beverages across the states, union territories, and cities of the United States. Latent demand (in millions of U.S. dollars) is estimated using data from IRI, a market research firm.
+Title: The 2019-2024 Outlook for Non-Alcoholic Beverages in the United States
+Format: Electronic (PDF)
+Product Code:"
+chat,turbo_fast_32,160,34,1.7777777777777777,2.711864406779661,33.0,11.32053711899971,11.320477326999935,14.133604997546062,0.9455753154180366,0.11801242236024845,9153.900390625,9218.0,97.0,52.66796875,1.841726618705036,0,0,32,0,1298,59,0,59,0,160,32,4,0,0,0,0,0,0,0,0,1298,0,0,1947,"Hi there! I understand how difficult it can be to overcome procrastination, especially when it comes to programming assignments. Here are some tips that might help:
+
+1. Break the task into smaller, manageable chunks. This can make the task feel less overwhelming and more achievable.
+2. Set a specific deadline for each chunk of the task. This will give you a sense of progress and motivation to keep going.
+3. Create a comfortable and distraction-free work environment. This can help you stay focused and avoid distractions that might lead to procrastination.
+4. Use a timer to work on the task for a specific amount of time, and then take a break. This can help you stay focused and"
+chat,turbo_fast_40,160,34,1.7777777777777777,2.5,41.0,12.163151913000092,12.163105222000013,13.154485049963938,0.8800696179383204,0.03571428571428571,9156.03955078125,9220.0,97.0,52.66796875,1.841726618705036,0,0,40,0,1792,64,0,64,0,160,40,4,0,0,0,0,0,0,0,0,1792,0,0,2624,"Hi there! I understand that procrastination can be a big challenge, but I'm here to help you get started on that programming assignment. Here are some tips that might help:
+
+1. Break the assignment down into smaller tasks. This can make the task feel less overwhelming and more manageable.
+2. Set a specific deadline for each task. This can help you stay on track and avoid procrastinating.
+3. Create a comfortable and distraction-free work environment. This can help you stay focused and avoid getting sidetracked.
+4. Use a timer to work on the assignment in short bursts. This can help you stay focused and avoid getting bogged down in the details.
+5. Reward"
+chat,turbo_fast_63,160,34,1.7777777777777777,2.962962962962963,64.0,10.299492529999952,10.299449568,15.53474596286743,1.0393153279950766,1.0,9160.451171875,9220.0,97.0,52.66796875,1.841726618705036,0,0,63,0,2268,54,0,54,0,160,63,4,0,0,0,0,0,0,0,0,2268,0,0,3456,"Hi there! I understand how difficult it can be to overcome procrastination, but I'm here to help. Here are some tips that might help you:
+
+1. Break the task into smaller, manageable chunks. This can make the task feel less overwhelming and more achievable.
+2. Set a specific deadline for yourself. This can help you stay motivated and accountable.
+3. Create a comfortable and distraction-free work environment. This can help you stay focused and avoid distractions.
+4. Use the Pomodoro technique. This involves working for a set amount of time (usually 25 minutes), followed by a short break. This can help you stay focused and avoid burnout.
+5."
+chat,turbo_adaptive_24_40,160,34,1.7777777777777777,2.622950819672131,29.459016393442624,11.468514245999813,11.468463987999712,13.951240463062385,0.9333746488332972,0.03571428571428571,9155.46484375,9220.0,97.0,52.66796875,1.841726618705036,40,17,24,61,1136,61,0,61,0,160,24,4,0,0,0,0,0,0,0,0,1136,0,0,1797,"Hi there! I understand that procrastination can be a big challenge, but I'm here to help you get started on your programming assignment. Here are some tips that might help:
+
+1. Break the assignment down into smaller tasks. This can make the task feel less overwhelming and more manageable.
+2. Set a timer for a specific amount of time and work on the assignment without distractions. This can help you stay focused and avoid getting sidetracked.
+3. Reward yourself for completing small tasks. This can help motivate you to keep going and make the task feel more achievable.
+4. Find a quiet and comfortable place to work. This can help you stay focused and avoid distractions.
+5"
+chat,turbo_adaptive_32_63,160,34,1.7777777777777777,2.909090909090909,42.018181818181816,10.343092501000228,10.342991976000121,15.469261247013618,1.034934228420037,1.0,9158.76318359375,9220.0,97.0,52.66796875,1.841726618705036,63,16,32,55,1530,55,0,55,0,160,32,4,0,0,0,0,0,0,0,0,1530,0,0,2311,"Hi there! I understand how difficult it can be to overcome procrastination, but I'm here to help. Here are some tips that might help you:
+
+1. Break the task into smaller, manageable chunks. This can make the task feel less overwhelming and more achievable.
+2. Set a specific deadline for yourself. This can help you stay motivated and accountable.
+3. Create a comfortable and distraction-free work environment. This can help you stay focused and avoid distractions.
+4. Use the Pomodoro technique. This involves working for a set amount of time (usually 25 minutes), followed by a short break. This can help you stay focused and avoid burnout.
+5."
+summarization,medusa_base,109,33,1.211111111111111,2.18,64.0,9.11700762999999,9.1169668550001,11.95567717211619,1.0,1.0,9311.361328125,9352.0,71.0,38.55078125,1.841726618705036,0,0,63,0,2100,50,0,50,0,109,63,4,0,0,0,0,0,0,0,0,2100,0,0,3200,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind power. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. By storing excess renewable energy, grids can balance supply and demand more effectively, reduce reliance on fossil fuels, and promote a more sustainable energy future."
+summarization,turbo_fast_24,109,33,1.211111111111111,1.847457627118644,25.0,10.863543897999989,10.863483746999918,10.033558203789026,0.8392296027522343,0.6894639556377079,9152.3310546875,9218.0,71.0,38.55078125,1.841726618705036,0,0,24,0,885,59,0,59,0,109,24,4,0,0,0,0,0,0,0,0,885,0,0,1475,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind power. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. Storage solutions like batteries and pumped hydro systems help to level out the variability of renewable energy production, ensuring a more stable and sustainable energy supply."
+summarization,turbo_fast_32,112,33,1.2444444444444445,2.0,33.0,10.578487338999821,10.57844334399988,10.58752507904305,0.8855646507197407,0.32717190388170053,9155.298828125,9218.0,72.5,39.365234375,1.841726618705036,0,0,32,0,1232,56,0,56,0,112,32,4,0,0,0,0,0,0,0,0,1232,0,0,1848,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind into the power grid. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. By storing excess renewable energy, utilities can reduce their reliance on fossil fuels and provide a more sustainable and cost-effective energy future for all."
+summarization,turbo_fast_40,109,33,1.211111111111111,1.981818181818182,41.0,10.345078616000137,10.345027140000184,10.536410987869727,0.8812893520112297,0.6894639556377079,9156.83740234375,9220.0,71.0,38.55078125,1.841726618705036,0,0,40,0,1540,55,0,55,0,109,40,4,0,0,0,0,0,0,0,0,1540,0,0,2255,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind power. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. Storage solutions like batteries and pumped hydro systems help to level out the variability of renewable energy production, ensuring a more stable and sustainable energy supply."
+summarization,turbo_fast_63,109,33,1.211111111111111,2.18,64.0,9.644638640999801,9.644591699000102,11.301615753299041,0.9452928170106003,1.0,9160.14013671875,9220.0,71.0,38.55078125,1.841726618705036,0,0,63,0,2100,50,0,50,0,109,63,4,0,0,0,0,0,0,0,0,2100,0,0,3200,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind power. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. By storing excess renewable energy, grids can balance supply and demand more effectively, reduce reliance on fossil fuels, and promote a more sustainable energy future."
+summarization,turbo_adaptive_24_40,109,33,1.211111111111111,1.8793103448275863,26.103448275862068,10.712627622999662,10.712577364000026,10.174907953113255,0.8510524169090011,0.6894639556377079,9152.33251953125,9218.0,71.0,38.55078125,1.841726618705036,40,4,24,58,922,58,0,58,0,109,24,4,0,0,0,0,0,0,0,0,922,0,0,1514,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind power. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. Storage solutions like batteries and pumped hydro systems help to level out the variability of renewable energy production, ensuring a more stable and sustainable energy supply."
+summarization,turbo_adaptive_32_63,112,33,1.2444444444444445,2.0,35.214285714285715,10.23670917399977,10.236641626000164,10.941016111356268,0.9151314437356689,0.32717190388170053,9159.0322265625,9220.0,72.5,39.365234375,1.841726618705036,63,4,32,56,1312,56,0,56,0,112,32,4,0,0,0,0,0,0,0,0,1312,0,0,1972,"Renewable energy storage is crucial for electric grids because it allows for the efficient and reliable integration of intermittent renewable energy sources like solar and wind into the power grid. Without storage, these sources would need to be constantly matched with traditional, non-renewable sources of energy, leading to increased greenhouse gas emissions and higher energy costs. By storing excess renewable energy, utilities can reduce their reliance on fossil fuels and provide a more sustainable and cost-effective energy future for all."
+reasoning,medusa_base,17,56,0.18888888888888888,2.4285714285714284,64.0,1.759228360999714,1.7591860269999415,9.663327613897401,1.0,1.0,9311.33447265625,9352.0,36.5,19.818359375,1.841726618705036,0,0,63,0,294,7,0,7,0,17,63,4,0,0,0,0,0,0,0,0,294,0,0,448,The second train catches the first train at 7:00 PM.
+reasoning,turbo_fast_24,17,56,0.18888888888888888,2.125,25.0,1.586279649000062,1.5862348840000777,10.716899766517358,1.1090278830146203,1.0,9151.21484375,9218.0,36.5,19.818359375,1.841726618705036,0,0,24,0,120,8,0,8,0,17,24,4,0,0,0,0,0,0,0,0,120,0,0,200,The second train catches the first train at 7:00 PM.
+reasoning,turbo_fast_32,17,56,0.18888888888888888,2.4285714285714284,33.0,1.4288867039999786,1.4288392299999941,11.897374335145507,1.2311881383422405,1.0,9153.328125,9218.0,36.5,19.818359375,1.841726618705036,0,0,32,0,154,7,0,7,0,17,32,4,0,0,0,0,0,0,0,0,154,0,0,231,The second train catches the first train at 7:00 PM.
+reasoning,turbo_fast_40,17,56,0.18888888888888888,2.4285714285714284,41.0,1.4361698339998838,1.4361253949996353,11.837040158860052,1.2249445151623035,1.0,9156.27294921875,9220.0,36.5,19.818359375,1.841726618705036,0,0,40,0,196,7,0,7,0,17,40,4,0,0,0,0,0,0,0,0,196,0,0,287,The second train catches the first train at 7:00 PM.
+reasoning,turbo_fast_63,17,56,0.18888888888888888,2.4285714285714284,64.0,1.4629487839997637,1.4629052740001498,11.620365788555688,1.2025221800245864,1.0,9158.490234375,9220.0,36.5,19.818359375,1.841726618705036,0,0,63,0,294,7,0,7,0,17,63,4,0,0,0,0,0,0,0,0,294,0,0,448,The second train catches the first train at 7:00 PM.
+reasoning,turbo_adaptive_24_40,17,56,0.18888888888888888,2.125,25.0,1.6048999629997525,1.6048419909998302,10.59256052833657,1.0961607586503415,1.0,9151.21630859375,9218.0,36.5,19.818359375,1.841726618705036,40,0,24,8,120,8,0,8,0,17,24,4,0,0,0,0,0,0,0,0,120,0,0,200,The second train catches the first train at 7:00 PM.
+reasoning,turbo_adaptive_32_63,17,56,0.18888888888888888,2.4285714285714284,33.0,1.6598133429997688,1.6597436879997076,10.242115519613803,1.0598952999258777,1.0,9153.32958984375,9218.0,36.5,19.818359375,1.841726618705036,63,0,32,7,154,7,0,7,0,17,32,4,0,0,0,0,0,0,0,0,154,0,0,231,The second train catches the first train at 7:00 PM.
+code,medusa_base,160,33,1.7777777777777777,2.711864406779661,64.0,10.737438659000418,10.73739680000017,14.90113285684604,1.0,1.0,9311.36376953125,9352.0,96.5,52.396484375,1.841726618705036,0,0,63,0,2478,59,0,59,0,160,63,4,0,0,0,0,0,0,0,0,2478,0,0,3776,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.Palindrome_Word
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            var words = Console.ReadLine()
+               .Split(new char[] {'' }, StringSplitOptions.RemoveEmptyEntries)
+               .ToLower()
+               .Where(IsPalindrome)
+               .ToList();
+
+            foreach (var word in words)
+            {
+                Console.WriteLine(word);
+            }
+        }
+
+        static bool IsPalind"
+code,turbo_fast_24,160,33,1.7777777777777777,2.6666666666666665,25.0,10.717700467000213,10.717644245999963,14.928575443271605,1.00184164430243,0.38920454545454547,9151.52783203125,9218.0,96.5,52.396484375,1.841726618705036,0,0,24,0,900,60,0,60,0,160,24,4,0,0,0,0,0,0,0,0,900,0,0,1500,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.FizzBuzz
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(FizzBuzz(50));
+        }
+
+        static int FizzBuzz(int n)
+        {
+            int i = 1;
+            while (i <= n)
+            {
+                if (i % 3 == 0 && i % 5 == 0)
+                {
+                    Console.WriteLine(""FizzBuzz"");
+"
+code,turbo_fast_32,160,33,1.7777777777777777,2.857142857142857,33.0,10.200757387000067,10.200711277999744,15.685109833501715,1.0526119043556807,0.40412979351032446,9153.60400390625,9218.0,96.5,52.396484375,1.841726618705036,0,0,32,0,1232,56,0,56,0,160,32,4,0,0,0,0,0,0,0,0,1232,0,0,1848,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.FizzBuzz
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(FizzBuzz(1, 100));
+        }
+
+        static int FizzBuzz(int n, int max)
+        {
+            if (n == 1)
+            {
+                return 1;
+            }
+            if (n % 3 == 0 && n % 5 == 0)
+            {
+                return "
+code,turbo_fast_40,160,33,1.7777777777777777,2.909090909090909,41.0,9.874950177999835,9.87490806300002,16.202613392061476,1.0873410463297424,0.38268156424581007,9154.63330078125,9220.0,96.5,52.396484375,1.841726618705036,0,0,40,0,1540,55,0,55,0,160,40,4,0,0,0,0,0,0,0,0,1540,0,0,2255,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.FizzBuzz
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(FizzBuzz(50));
+        }
+
+        static int FizzBuzz(int n)
+        {
+            int i = 1;
+            while (i <= n)
+            {
+                if (i % 3 == 0 && i % 5 == 0)
+                    Console.WriteLine(""FizzBuzz"");
+                else if"
+code,turbo_fast_63,160,33,1.7777777777777777,2.857142857142857,64.0,10.097093612000208,10.097042619000149,15.846144063658375,1.0634187491575964,0.762589928057554,9159.85302734375,9220.0,96.5,52.396484375,1.841726618705036,0,0,63,0,2352,56,0,56,0,160,63,4,0,0,0,0,0,0,0,0,2352,0,0,3584,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.Palindrome_Word
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            var words = Console.ReadLine()
+               .Split(new char[] {'' }, StringSplitOptions.RemoveEmptyEntries)
+               .ToLower()
+               .Where(word => word.Length % 2 == 0)
+               .ToList();
+
+            foreach (var word in words)
+            {
+                Console.WriteLine(word);
+            }
+        }
+"
+code,turbo_adaptive_24_40,160,33,1.7777777777777777,2.6666666666666665,25.0,10.559295918999851,10.55924416500011,15.15252543610453,1.0168707024944745,0.38920454545454547,9151.529296875,9218.0,96.5,52.396484375,1.841726618705036,40,0,24,60,900,60,0,60,0,160,24,4,0,0,0,0,0,0,0,0,900,0,0,1500,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.FizzBuzz
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(FizzBuzz(50));
+        }
+
+        static int FizzBuzz(int n)
+        {
+            int i = 1;
+            while (i <= n)
+            {
+                if (i % 3 == 0 && i % 5 == 0)
+                {
+                    Console.WriteLine(""FizzBuzz"");
+"
+code,turbo_adaptive_32_63,160,33,1.7777777777777777,2.711864406779661,35.101694915254235,10.263157666000097,10.263093049999952,15.589743937194863,1.0462119952197093,0.39941690962099125,9158.2060546875,9220.0,96.5,52.396484375,1.841726618705036,63,4,32,59,1378,59,0,59,0,160,32,4,0,0,0,0,0,0,0,0,1378,0,0,2071,"
+Here' ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace _03.FizzBuzz
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(FizzBuzz(1, 10));
+        }
+
+        static int FizzBuzz(int n, int max)
+        {
+            if (n == 1)
+            {
+                return 1;
+            }
+            else if (n % 3 == 0 && n % 5 == 0)
+            {
+                return "
+creative,medusa_base,142,35,1.5777777777777777,1.9722222222222223,64.0,14.31510960200012,14.31505491300004,9.919588738612216,1.0,1.0,9311.37548828125,9352.0,88.5,48.052734375,1.841726618705036,0,0,63,0,3024,72,0,72,0,142,63,4,0,0,0,0,0,0,0,0,3024,0,0,4608,"The moon base was a quiet place, a small community of scientists and engineers living and working in isolation on the far side of the moon. The days were long and routine, filled with experiments and calculations, but the nights were something else entirely. The moon's craters and valleys stretched out before them like a vast, dark canvas, and the silence was broken only by the occasional crackle of static on the radio and the distant hum of the base's life support systems. It was a lonely place, but also a beautiful one, and the scientists and engineers who called it home took pride in their work and the small community they had built."
+creative,turbo_fast_24,140,35,1.5555555555555556,1.5555555555555556,25.0,16.271482772000127,16.271428155000194,8.604009970186071,0.8673756742247564,0.04873294346978557,9152.0576171875,9218.0,87.5,47.509765625,1.841726618705036,0,0,24,0,1350,90,0,90,0,140,24,4,0,0,0,0,0,0,0,0,1350,0,0,2250,"The moon base was a quiet, desolate place. The only sounds that could be heard were the soft hum of the life support systems and the gentle rustling of the lunar dust as it was kicked up by the crew' The 2018-2023 World Outlook for Men's and Boys' Cut and Sewn Suits and Blazers Excluding Work Clothes
+This study covers the world outlook for men's and boys' cut and sewn suits and blazers excluding work clothes across more than 190 countries. For each year reported, estimates are given for the latent demand, or"
+creative,turbo_fast_32,145,35,1.6111111111111112,1.9594594594594594,33.0,13.95426848499983,13.954217505000088,10.391085720893793,1.047531908298402,0.2236024844720497,9154.99560546875,9218.0,90.0,48.8671875,1.841726618705036,0,0,32,0,1628,74,0,74,0,145,32,4,0,0,0,0,0,0,0,0,1628,0,0,2442,"The moon base was a quiet place, a small community of scientists and engineers living and working in isolation on the far side of the moon. The air was thin and the temperature was cold, but the people who lived there were used to it. They were focused on their work, studying the moon's geology and searching for resources that could be used to support future space exploration. The base was surrounded by miles of craters and rocky terrain, but it was a home to those who lived there. The only sounds were the hum of the life support systems and the occasional crackle of the radio communication with Earth. But one day, something unexpected happened, something that would change everything."
+creative,turbo_fast_40,160,35,1.7777777777777777,1.9047619047619047,41.0,15.606945104999795,15.606886146999841,10.251846144364464,1.0334950787283075,0.24742268041237114,9157.109375,9220.0,97.5,52.939453125,1.841726618705036,0,0,40,0,2352,84,0,84,0,160,40,4,0,0,0,0,0,0,0,0,2352,0,0,3444,"The moon base was a quiet place, a small community of scientists and engineers living and working in isolation on the far side of the moon. The air was thin and the temperature was cold, but the people who lived there were used to it. They were focused on their work, studying the moon' The 2018-2023 World Outlook for 3D Printing Materials
+The 2018-2023 World Outlook for 3D Printing Materials Table of Contents
+The 2018-2023 World Outlook for 3D Printing Materials Description
+This study covers the world outlook for 3D printing materials. Part of the data included in this report"
+creative,turbo_fast_63,142,35,1.5777777777777777,1.9722222222222223,64.0,14.245087822999722,14.244999422999626,9.968348511739658,1.0049155034963944,0.6257763975155279,9161.53955078125,9220.0,88.5,48.052734375,1.841726618705036,0,0,63,0,3024,72,0,72,0,142,63,4,0,0,0,0,0,0,0,0,3024,0,0,4608,"The moon base was a quiet place, a small community of scientists and engineers living and working in isolation on the far side of the moon. The days were long and routine, filled with experiments and calculations, but the nights were something else entirely. The moon's craters and valleys stretched out before them like a vast, dark canvas, and the silence was broken only by the occasional crackle of radio transmissions and the distant hum of the base's life support systems. It was a place of wonder and discovery, where the boundaries of science and technology were pushed to their limits, and where the explorers of the future would one day make their home."
+creative,turbo_adaptive_24_40,119,35,1.3222222222222222,2.016949152542373,31.508474576271187,11.009038088000125,11.008957334000115,10.809300417418871,1.0896923957485691,0.052742616033755275,9154.943359375,9220.0,77.0,41.80859375,1.841726618705036,40,24,24,59,1197,59,0,59,0,119,24,4,0,0,0,0,0,0,0,0,1197,0,0,1859,"The moon base was a quiet, desolate place. The only sounds were the soft hum of the ventilation system and the gentle whir of the solar panels. The air was thin and crisp, with a hint of metal and ozone. The stars shone brightly in the black sky, casting eerie shadows across the lunar surface. The only inhabitants were a handful of scientists and engineers, each working in isolation to unlock the secrets of the moon. It was a lonely, yet exhilarating place to call home."
+creative,turbo_adaptive_32_63,160,35,1.7777777777777777,2.0,42.3,15.223023074999674,15.222965960999773,10.510395945123628,1.0595596472877633,0.2236024844720497,9159.35009765625,9220.0,97.5,52.939453125,1.841726618705036,63,24,32,80,2240,80,0,80,0,160,32,4,0,0,0,0,0,0,0,0,2240,0,0,3384,"The moon base was a quiet place, a small community of scientists and engineers living and working in isolation on the far side of the moon. The air was thin and the temperature was cold, but the people who lived there were used to it. They were focused on their work, studying the moon's geology and searching for resources that could be used to support future space exploration. The base was surrounded by miles of rocky terrain, and the only sounds that could be heard were the hum of the life support systems and the occasional crackle of the radio. But one day, something strange happened. A strange signal was detected coming from the depths of the moon, and it was unlike anything anyone had ever heard before. The scientists were intrigued, and"
+instruction,medusa_base,160,35,1.7777777777777777,2.5,64.0,12.605748629000118,12.605695642000228,12.6926218116005,1.0,1.0,9312.15283203125,9352.0,97.5,52.939453125,1.841726618705036,0,0,63,0,2688,64,0,64,0,160,63,4,0,0,0,0,0,0,0,0,2688,0,0,4096,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire.
+2. Prioritize tasks: Identify the most important topics and allocate time for them.
+3. Schedule study time: Allocate time slots for studying each day or week.
+4. Use online resources: Utilize free online courses, tutorials, and articles to supplement your learning.
+5. Practice regularly: Apply your knowledge by working on projects and solving problems.
+6. Review and adjust: Regularly assess your progress and adjust your plan accordingly.
+
+Example:
+
+* Goal: Learn the basics"
+instruction,turbo_fast_24,160,35,1.7777777777777777,2.2857142857142856,25.0,13.25304528200013,13.252993625999807,12.072696998727302,0.9511586477502534,0.600297176820208,9152.60205078125,9218.0,97.5,52.939453125,1.841726618705036,0,0,24,0,1050,70,0,70,0,160,24,4,0,0,0,0,0,0,0,0,1050,0,0,1750,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire.
+2. Prioritize tasks: Identify the most important topics and allocate time for them.
+3. Schedule study time: Allocate time slots for studying each day or week.
+4. Use online resources: Utilize free online resources like Coursera, Udemy, and YouTube tutorials.
+5. Practice regularly: Apply your knowledge by working on projects and solving problems.
+6. Review and adjust: Regularly assess your progress and adjust your plan accordingly.
+
+Remember, consistency is key. Stick to"
+instruction,turbo_fast_32,160,35,1.7777777777777777,2.4242424242424243,33.0,12.604883135999899,12.60483367300003,12.693493329028614,1.0000686633101539,0.2962962962962963,9156.0908203125,9218.0,97.5,52.939453125,1.841726618705036,0,0,32,0,1452,66,0,66,0,160,32,4,0,0,0,0,0,0,0,0,1452,0,0,2178,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire. This will help you focus your studies and measure your progress.
+2. Prioritize tasks: Prioritize tasks based on their importance and urgency. Focus on the most critical concepts and techniques that will have the greatest impact on your learning.
+3. Schedule study time: Allocate specific time slots for studying each day or week. Make sure to balance your study time between theoretical concepts and practical exercises.
+4. Use online resources: Utilize online resources such as courses, tutorials, and forums to supplement your learning. Websites"
+instruction,turbo_fast_40,160,35,1.7777777777777777,2.318840579710145,41.0,13.104727349999848,13.104677765999895,12.209334519271922,0.961923761733224,0.21333333333333335,9158.78955078125,9220.0,97.5,52.939453125,1.841726618705036,0,0,40,0,1932,69,0,69,0,160,40,4,0,0,0,0,0,0,0,0,1932,0,0,2829,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your objectives and what you want to achieve in terms of machine learning skills.
+2. Prioritize tasks: Identify the most important topics and skills to focus on based on your goals and work requirements.
+3. Schedule study time: Allocate specific time slots for studying each day or week. Make sure to balance your study time with work and other commitments.
+4. Use resources effectively: Utilize online courses, books, tutorials, and other resources efficiently to maximize your learning.
+5. Practice regularly: Apply your knowledge by working on projects and solving problems regularly to reinforce your learning."
+instruction,turbo_fast_63,160,35,1.7777777777777777,2.5,64.0,12.369019697000113,12.36892944300007,12.935544119054574,1.0191388596508921,1.0,9162.64013671875,9220.0,97.5,52.939453125,1.841726618705036,0,0,63,0,2688,64,0,64,0,160,63,4,0,0,0,0,0,0,0,0,2688,0,0,4096,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire.
+2. Prioritize tasks: Identify the most important topics and allocate time for them.
+3. Schedule study time: Allocate time slots for studying each day or week.
+4. Use online resources: Utilize free online courses, tutorials, and articles to supplement your learning.
+5. Practice regularly: Apply your knowledge by working on projects and solving problems.
+6. Review and adjust: Regularly assess your progress and adjust your plan accordingly.
+
+Example:
+
+* Goal: Learn the basics"
+instruction,turbo_adaptive_24_40,160,35,1.7777777777777777,2.2535211267605635,27.704225352112676,13.333221549999962,13.33316187499986,12.000100605843489,0.9454390734998441,0.3333333333333333,9156.8388671875,9218.0,97.5,52.939453125,1.841726618705036,40,12,24,71,1221,71,0,71,0,160,24,4,0,0,0,0,0,0,0,0,1221,0,0,1967,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire.
+2. Prioritize tasks: Prioritize tasks based on their importance and urgency.
+3. Schedule study time: Allocate specific time slots for studying each day or week.
+4. Use online resources: Utilize free online resources like Coursera, edX, and YouTube tutorials.
+5. Join online communities: Participate in online forums, groups, and Q&A platforms to learn from others.
+6. Practice regularly: Apply your knowledge by working on projects and solving problems.
+7. Review"
+instruction,turbo_adaptive_32_63,160,35,1.7777777777777777,2.388059701492537,36.701492537313435,12.782543101999636,12.782488269999703,12.51707103377343,0.9861690688942907,0.2962962962962963,9158.53662109375,9220.0,97.5,52.939453125,1.841726618705036,63,8,32,67,1634,67,0,67,0,160,32,4,0,0,0,0,0,0,0,0,1634,0,0,2459,"To create a simple weekly study plan for learning machine learning while working part time, follow these steps:
+
+1. Set clear goals: Define your learning objectives and the skills you want to acquire. This will help you focus your studies and measure your progress.
+2. Prioritize tasks: Prioritize tasks based on their importance and urgency. Focus on the most critical concepts and techniques that will have the greatest impact on your learning.
+3. Allocate time: Schedule your study time around your work schedule. Aim for at least 2-3 hours of study per day, and try to maintain a consistent study routine.
+4. Use online resources: Utilize online resources such as courses, tutorials, and forums to supplement your"
+technical_qa,medusa_base,160,31,1.7777777777777777,2.0,64.0,15.406403333000071,15.406315091000124,10.385292176356607,1.0,1.0,9311.35888671875,9352.0,95.5,51.853515625,1.841726618705036,0,0,63,0,3360,80,0,80,0,160,63,4,0,0,0,0,0,0,0,0,3360,0,0,5120,"Latency and throughput are two important performance metrics for web servers.
+
+Latency refers to the time it takes for a request to be processed and a response to be returned. In other words, it measures the time it takes for a user' The 1975 release new song 'Me & You Together Alone'
+The 1975 have released a new song called 'Me & You Together Alone'.
+The track is the latest to be taken from the band's upcoming album 'Notes On A Conditional Form', which is set to be released on May 10th.
+Frontman Matty Healy explained the song's meaning in a statement, saying: ""It's about the idea of"
+technical_qa,turbo_fast_24,160,31,1.7777777777777777,2.2857142857142856,25.0,13.43978382899968,13.439715927999714,11.904953385839448,1.146328209517546,0.32767402376910015,9156.18115234375,9216.0,95.5,51.853515625,1.841726618705036,0,0,24,0,1050,70,0,70,0,160,24,4,0,0,0,0,0,0,0,0,1050,0,0,1750,"Latency and throughput are two important performance metrics for web servers.
+
+Latency refers to the time it takes for a request to be processed and a response to be returned. In other words, it' The first step in the process of creating a new product is to identify a need or problem that needs to be solved. This can be done through market research, customer feedback, or by analyzing industry trends. Once a need has been identified, the next step is to develop a concept for the product. This involves brainstorming ideas, creating prototypes, and testing different designs to see which one is the most effective. Once a concept has been developed, the next step is to create a business plan. This includes identifying the target market, creating"
+technical_qa,turbo_fast_32,160,31,1.7777777777777777,2.909090909090909,33.0,10.293351062000056,10.293302571999902,15.544014678628,1.4967334972063528,0.013582342954159592,9157.212890625,9218.0,95.5,51.853515625,1.841726618705036,0,0,32,0,1210,55,0,55,0,160,32,4,0,0,0,0,0,0,0,0,1210,0,0,1815,"Latency refers to the time it takes for a request to be processed and a response to be returned. It is the delay between the time a request is made and the time a response is received.
+
+For example, if a web server takes 100 milliseconds to process a request and return a response, the latency is 100 milliseconds.
+
+Throughput, on the other hand, refers to the number of requests that can be processed in a given period of time. It is the rate at which requests are processed and responses are returned.
+
+For example, if a web server can process 100 requests per second, the throughput is 100 requests per second.
+
+In summary, latency is the"
+technical_qa,turbo_fast_40,160,31,1.7777777777777777,1.797752808988764,41.0,17.03017733500019,17.03013111900009,9.3950871357734,0.9046531360150337,0.32767402376910015,9158.2109375,9220.0,95.5,51.853515625,1.841726618705036,0,0,40,0,2492,89,0,89,0,160,40,4,0,0,0,0,0,0,0,0,2492,0,0,3649,"Latency and throughput are two important performance metrics for web servers.
+
+Latency refers to the time it takes for a request to be processed and a response to be returned. In other words, it' The 1975 release new song 'Me & You Together Alone'
+The 1975 have released a new song called 'Me & You Together Alone'.
+The track is the latest to be lifted from the band's upcoming album 'Notes On A Conditional Form', which is set to be released on 28 April.
+The song features a catchy chorus and a driving beat, with frontman Matt Healy singing about the highs and lows of a relationship.
+Listen to"
+technical_qa,turbo_fast_63,160,31,1.7777777777777777,2.0,64.0,14.958453330999873,14.9584103950001,10.696293023050469,1.0299462780066884,1.0,9163.17529296875,9220.0,95.5,51.853515625,1.841726618705036,0,0,63,0,3360,80,0,80,0,160,63,4,0,0,0,0,0,0,0,0,3360,0,0,5120,"Latency and throughput are two important performance metrics for web servers.
+
+Latency refers to the time it takes for a request to be processed and a response to be returned. In other words, it measures the time it takes for a user' The 1975 release new song 'Me & You Together Alone'
+The 1975 have released a new song called 'Me & You Together Alone'.
+The track is the latest to be taken from the band's upcoming album 'Notes On A Conditional Form', which is set to be released on May 10th.
+Frontman Matty Healy explained the song's meaning in a statement, saying: ""It's about the idea of"
+technical_qa,turbo_adaptive_24_40,160,31,1.7777777777777777,2.318840579710145,28.71014492753623,12.958760863999942,12.958711926999968,12.346859524546646,1.1888793608191195,0.32767402376910015,9155.90771484375,9218.0,95.5,51.853515625,1.841726618705036,40,16,24,69,1243,69,0,69,0,160,24,4,0,0,0,0,0,0,0,0,1243,0,0,1981,"Latency and throughput are two important performance metrics for web servers.
+
+Latency refers to the time it takes for a request to be processed and a response to be returned. In other words, it' The first step in the process of creating a new product is to identify a need or problem that needs to be solved. This can be done through market research, customer feedback, or by analyzing industry trends. Once a need has been identified, the next step is to develop a concept for the product. This involves brainstorming ideas, creating prototypes, and testing different designs to see which one is the most effective. Once a concept has been developed, the next step is to create a business plan. This includes identifying the target market, creating"
+technical_qa,turbo_adaptive_32_63,160,31,1.7777777777777777,2.909090909090909,35.25454545454546,10.614114609999888,10.614045743000133,15.074267226138582,1.45150150522072,0.013582342954159592,9158.8095703125,9220.0,95.5,51.853515625,1.841726618705036,63,4,32,55,1290,55,0,55,0,160,32,4,0,0,0,0,0,0,0,0,1290,0,0,1939,"Latency refers to the time it takes for a request to be processed and a response to be returned. It is the delay between the time a request is made and the time a response is received.
+
+For example, if a web server takes 100 milliseconds to process a request and return a response, the latency is 100 milliseconds.
+
+Throughput, on the other hand, refers to the number of requests that can be processed in a given period of time. It is the rate at which requests are processed and responses are returned.
+
+For example, if a web server can process 100 requests per second, the throughput is 100 requests per second.
+
+In summary, latency is the"
+comparison,medusa_base,160,33,1.7777777777777777,2.6666666666666665,64.0,11.719515580000007,11.719460767000328,13.652441426252185,1.0,1.0,9311.3671875,9352.0,96.5,52.396484375,1.841726618705036,0,0,63,0,2520,60,0,60,0,160,63,4,0,0,0,0,0,0,0,0,2520,0,0,3840,"SQLite is a lightweight, file-based database management system that is easy to set up and use. It is a good choice for small to medium-sized projects, as it is simple to install and requires minimal maintenance. SQLite is also a good choice for projects that require a small amount of data storage, as it can handle up to several gigabytes of data.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is well-suited for large-scale projects. It is highly scalable and can handle a large amount of data, making it a good choice for projects that require a large amount of data storage. PostgreSQL also supports advanced features such as transactions, stored procedures, and triggers, which can"
+comparison,turbo_fast_24,160,33,1.7777777777777777,2.5,25.0,12.109314880000056,12.109261746999891,13.212968824872052,0.9678099625071399,0.0625,9153.95751953125,9218.0,96.5,52.396484375,1.841726618705036,0,0,24,0,960,64,0,64,0,160,24,4,0,0,0,0,0,0,0,0,960,0,0,1600,"SQLite is a lightweight, file-based database system that is easy to set up and use. It is a good choice for small projects and local development.
+
+PostgreSQL, on the other hand, is a powerful, open-source relational database management system. It is more complex to set up and use, but it offers more advanced features and scalability for larger projects.
+
+In terms of practicality, SQLite is a good choice for a small analytics dashboard because it is easy to set up and use, and it requires less maintenance. PostgreSQL, on the other hand, is a better choice for larger projects that require more advanced features and scalability.
+
+In conclusion, the choice between SQLite and PostgreSQL depends on the specific needs of"
+comparison,turbo_fast_32,160,33,1.7777777777777777,2.4615384615384617,33.0,12.368559636999635,12.368505510999967,12.936025268566583,0.947524685488999,0.2864864864864865,9155.81640625,9218.0,96.5,52.396484375,1.841726618705036,0,0,32,0,1430,65,0,65,0,160,32,4,0,0,0,0,0,0,0,0,1430,0,0,2145,"SQLite is a lightweight, file-based database management system that is easy to set up and use. It is a good choice for small to medium-sized projects, as it is simple to install and requires minimal maintenance.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is highly scalable and supports advanced features such as transactions, stored procedures, and full-text search. It is a good choice for larger projects that require more advanced functionality and can handle a high volume of data.
+
+In terms of practical use, SQLite is a good choice for a small analytics dashboard that only needs to store a limited amount of data. It is easy to set up and requires minimal configuration, making it a good choice"
+comparison,turbo_fast_40,160,33,1.7777777777777777,2.4242424242424243,41.0,12.452968445999886,12.452873814000213,12.848342199999296,0.9411021661878957,0.06302521008403361,9156.845703125,9220.0,96.5,52.396484375,1.841726618705036,0,0,40,0,1848,66,0,66,0,160,40,4,0,0,0,0,0,0,0,0,1848,0,0,2706,"SQLite is a lightweight, file-based database system that is easy to set up and use. It is a good choice for small to medium-sized projects, and it is often used for local development and testing.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is widely used in enterprise-level applications. It is known for its robustness, scalability, and support for advanced features such as transactions, foreign keys, and full-text search.
+
+In terms of practical use, SQLite is a good choice for a small analytics dashboard because it is easy to set up and use, and it requires minimal configuration. It is also a good choice for local development and testing, as it can be"
+comparison,turbo_fast_63,160,33,1.7777777777777777,2.6666666666666665,64.0,11.56124022799986,11.56118963400013,13.839345679583774,1.0136901706805488,1.0,9160.14208984375,9220.0,96.5,52.396484375,1.841726618705036,0,0,63,0,2520,60,0,60,0,160,63,4,0,0,0,0,0,0,0,0,2520,0,0,3840,"SQLite is a lightweight, file-based database management system that is easy to set up and use. It is a good choice for small to medium-sized projects, as it is simple to install and requires minimal maintenance. SQLite is also a good choice for projects that require a small amount of data storage, as it can handle up to several gigabytes of data.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is well-suited for large-scale projects. It is highly scalable and can handle a large amount of data, making it a good choice for projects that require a large amount of data storage. PostgreSQL also supports advanced features such as transactions, stored procedures, and triggers, which can"
+comparison,turbo_adaptive_24_40,160,33,1.7777777777777777,2.388059701492537,29.776119402985074,12.662709221000114,12.662641526999778,12.635526663966388,0.9255140724991225,0.06569343065693431,9156.57421875,9218.0,96.5,52.396484375,1.841726618705036,40,20,24,67,1265,67,0,67,0,160,24,4,0,0,0,0,0,0,0,0,1265,0,0,1995,"SQLite is a lightweight, file-based database system that is easy to set up and use. It is a good choice for small to medium-sized projects, and it is often used for local data storage.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is widely used in enterprise-level applications. It is more complex to set up and use than SQLite, but it offers more advanced features and scalability.
+
+In terms of practical use, SQLite is a good choice for a small analytics dashboard because it is easy to set up and use, and it requires minimal maintenance. It is also a good choice if you need to store a large amount of data locally.
+
+PostgreSQL,"
+comparison,turbo_adaptive_32_63,160,33,1.7777777777777777,2.4242424242424243,34.878787878787875,12.498656217999724,12.498589865999747,12.801376180711232,0.9376620474705392,0.2864864864864865,9159.04150390625,9220.0,96.5,52.396484375,1.841726618705036,63,4,32,66,1532,66,0,66,0,160,32,4,0,0,0,0,0,0,0,0,1532,0,0,2302,"SQLite is a lightweight, file-based database management system that is easy to set up and use. It is a good choice for small to medium-sized projects, as it is simple to install and requires minimal maintenance.
+
+On the other hand, PostgreSQL is a powerful, open-source relational database management system that is highly scalable and supports advanced features such as transactions, concurrency control, and foreign keys. It is a good choice for larger projects that require more advanced features and higher performance.
+
+In terms of practical use, SQLite is a good choice for a small analytics dashboard because it is easy to set up and requires minimal maintenance. However, if the project requires more advanced features or scalability, PostgreSQL may be a better choice"

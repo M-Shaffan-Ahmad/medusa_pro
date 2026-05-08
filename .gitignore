@@ -1,20 +1,22 @@
-medusa_working_setup.zip
-Medusa/TinyLlama-1.1B-Chat-v1.0-4heads/
+# Local/editor artifacts.
+.codex
+
+# Build outputs.
 *.o
 *.out
-.codex
-*.pt
-*.bin
-Medusa/TinyLlama-1.1B-Chat-v1.0-4heads/
-medusa_working_setup.zip
-Medusa/TinyLlama-1.1B-Chat-v1.0-4heads/
+
+# Model weights and generated checkpoints.
 *.pt
 *.bin
 *.safetensors
-.codex
-medusa_working_setup.zip
 Medusa/TinyLlama-1.1B-Chat-v1.0-4heads/
-*.pt
-*.bin
-*.safetensors
-.codex
+
+# Large generated artifact bundles and model outputs.
+medusa_working_setup.zip
+artifacts/model_outputs/
+artifacts/packages/
+
+# Generated Python/package/venv artifacts.
+Medusa/__pycache__/
+Medusa/medusa_llm.egg-info/
+Medusa/medusa_env/bin/*

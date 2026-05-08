@@ -1,0 +1,16 @@
+prompt,mode,tokens,seconds,tps,alloc_mb,text
+hpc,base_transformers,60,0.9337101569981314,64.25977006922511,2369.5498046875,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init(&argc, &argv);
+
+  // Get the number of processes"
+systems,base_transformers,60,0.6696173419986735,89.60341412441922,2369.36328125,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its"

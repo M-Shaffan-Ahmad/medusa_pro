@@ -1,0 +1,53 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,47,31,1.175,1.175,25.0,0.8105675629994948,0.810544244995981,57.984062212009945,1.0,1.0,3190.74072265625,3260.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,turbo_fast_24,47,31,1.175,1.175,25.0,0.6976545200013788,0.6976322129994514,67.36858810849117,1.1618466443790731,1.0,2980.994140625,2984.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,turbo_auto,47,31,1.175,1.175,25.0,0.697639887999685,0.69761805300368,67.3700010685473,1.1618710124554414,1.0,2980.994140625,2984.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,40,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,turbo_vq_shadow_b8_full_tree,47,31,1.175,1.175,25.0,1.9536695509959827,1.9536424029938644,24.05729258360983,0.4148949153587753,1.0,3074.95263671875,3082.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+systems,medusa_base,50,25,1.25,1.25,25.0,0.8659409190004226,0.8659189410027466,57.740659787409356,1.0,1.0,3190.74072265625,3258.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,turbo_fast_24,50,25,1.25,1.25,25.0,0.6986558069984312,0.6986332439992111,71.56599787642253,1.2394385194058322,1.0,2980.994140625,2984.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,turbo_auto,50,25,1.25,1.25,25.0,0.6999981330009177,0.6999756270015496,71.42876193918998,1.2370617551336915,1.0,2980.994140625,2984.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,40,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,turbo_vq_shadow_b8_full_tree,50,25,1.25,1.25,25.0,0.7398094650052371,0.7397869680062286,67.58496932672529,1.1704918089879972,1.0,3074.95263671875,3082.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"

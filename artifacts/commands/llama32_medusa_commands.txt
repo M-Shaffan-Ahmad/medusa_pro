@@ -1,0 +1,117 @@
+# Llama 3.2 1B Medusa / Turbo / QJL test path
+
+# 0) One-time requirements
+# - Accept the Meta Llama 3.2 license on Hugging Face:
+#   https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct
+# - Put a Hugging Face token in this shell. Do not commit it.
+export HF_TOKEN=hf_your_token_here
+
+
+# 1) Upgrade the local Medusa venv enough for Llama 3.2 configs/tokenizer.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+./medusa_env/bin/python -m pip install -U \
+  "transformers==4.45.2" \
+  "huggingface-hub==0.25.2" \
+  "tokenizers>=0.20,<0.21" \
+  "safetensors>=0.4.5"
+
+
+# 2) Download the base model locally.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+./medusa_env/bin/huggingface-cli download meta-llama/Llama-3.2-1B-Instruct \
+  --local-dir ../models/Llama-3.2-1B-Instruct \
+  --local-dir-use-symlinks False \
+  --token "$HF_TOKEN"
+
+
+# 3) Create a config-only Medusa init folder.
+# Version 2 means lightweight heads reuse the base LM head.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+./medusa_env/bin/python scripts/create_medusa_init.py \
+  --base-model ../models/Llama-3.2-1B-Instruct \
+  --output-dir ../llama32_1b_medusa_init \
+  --medusa-num-heads 4 \
+  --medusa-num-layers 1 \
+  --version 2
+
+
+# 4) Tiny smoke train first. This catches model/load/OOM problems quickly.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python train_tinyllama_medusa_heads.py \
+  --init-medusa-dir ../llama32_1b_medusa_init \
+  --output-dir ../llama32_1b_medusa_heads_selfdistill \
+  --data-path ../medusa_training_local/medusa_train_mix_70_15_10_5.jsonl \
+  --seq-len 768 \
+  --micro-batch-size 1 \
+  --grad-accum 24 \
+  --learning-rate 3e-5 \
+  --max-steps 20 \
+  --eval-every 10 \
+  --eval-batches 8 \
+  --checkpoint-dir ../medusa_training_local/llama32_checkpoints \
+  --checkpoint-every 10 \
+  --keep-checkpoints 2 \
+  --loss-token-chunk-size 64 \
+  --argmax-token-chunk-size 64 \
+  --dtype fp16 \
+  --device cuda:0
+
+
+# 5) Real first training run.
+# If 768 is easy on VRAM, later try seq-len 1024. If it OOMs, use 512.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python train_tinyllama_medusa_heads.py \
+  --init-medusa-dir ../llama32_1b_medusa_init \
+  --output-dir ../llama32_1b_medusa_heads_selfdistill \
+  --data-path ../medusa_training_local/medusa_train_mix_70_15_10_5.jsonl \
+  --seq-len 768 \
+  --micro-batch-size 1 \
+  --grad-accum 24 \
+  --learning-rate 3e-5 \
+  --max-steps 1200 \
+  --eval-every 100 \
+  --eval-batches 48 \
+  --checkpoint-dir ../medusa_training_local/llama32_checkpoints \
+  --checkpoint-every 100 \
+  --keep-checkpoints 3 \
+  --loss-token-chunk-size 64 \
+  --argmax-token-chunk-size 64 \
+  --dtype fp16 \
+  --device cuda:0
+
+
+# 6) Fair short-context Medusa/Turbo benchmark.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python bench_comm_turbo.py \
+  --model-dir ../llama32_1b_medusa_heads_selfdistill \
+  --out-csv llama32_1b_short_fixed_tokens.csv \
+  --max-steps 90 \
+  --target-new-tokens 120 \
+  --prompt-suite mixed \
+  --choice-limit 24 \
+  --only medusa_base,turbo_auto,turbo_fast_24,turbo_best_full_tree
+
+
+# 7) Long-context QJL/TurboQuant benchmark.
+# Start with 8K-ish context. If it fits, increase long-repeat and kv-max-length.
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python bench_comm_turbo.py \
+  --model-dir ../llama32_1b_medusa_heads_selfdistill \
+  --out-csv llama32_1b_long_qjl_turbo.csv \
+  --max-steps 60 \
+  --target-new-tokens 80 \
+  --long-only \
+  --long-repeat 500 \
+  --kv-max-length 16384 \
+  --choice-limit 24 \
+  --node-budget 32 \
+  --kv-qjl-min-kv-len 4096 \
+  --only medusa_base,turbo_auto,qjl_prune_nb32,packed_kv_qjl_nb32,packed_kv_qjl_strict_nb32,turbo_vq_shadow_b8_full_tree,turbo_vq_strict_b8_full_tree,hybrid_vq_h512_full_tree
+
+
+# 8) If long-repeat 500 fits, try a larger context.
+# Recommended next attempts:
+#   --long-repeat 1000 --kv-max-length 32768
+#   --long-repeat 2000 --kv-max-length 65536

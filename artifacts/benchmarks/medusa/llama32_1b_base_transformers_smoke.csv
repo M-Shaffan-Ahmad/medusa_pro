@@ -1,0 +1,36 @@
+category,mode,tokens,total_s,tps,peak_alloc_mb,text
+hpc,base_transformers,80,1.0380630880026729,77.06660695731627,2370.1748046875,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init(&argc, &argv);
+
+  // Get the number of processes
+  int numProcesses = MPI_Comm_size(MPI_COMM_WORLD);
+
+  // Get the number of threads"
+systems,base_transformers,80,0.8577189260031446,93.27064796481675,2369.98828125,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its workload. In other words, strong scaling ensures that the system can handle a large number of users or"
+chat,base_transformers,80,0.8581537370046135,93.22338941183206,2370.01953125,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on completing one task at a time.
+2. **Set a timer**: Set a timer for a specific amount of time (e"
+code,base_transformers,80,0.8657027800072683,92.41046909809893,2370.11328125,"Here is a Python function that groups strings by their first letter:
+
+```python
+def group_strings_by_first_letter(strings):
+    """"""
+    Groups a list of strings by their first letter.
+
+    Args:
+        strings (list): A list of strings.
+
+    Returns:
+        dict: A dictionary where the keys are the first letters of the strings
+              and the values are lists of strings that start with"

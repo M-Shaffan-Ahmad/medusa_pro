@@ -1,0 +1,65 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,47,31,1.175,1.175,25.0,0.8215001530043082,0.8214573980003479,57.212405655819175,1.0,1.0,3199.421875,3206.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,turbo_fast_24,47,31,1.175,1.175,25.0,0.7207734830008121,0.720730002001801,65.20772629470754,1.139748024003517,1.0,2989.70703125,3006.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,qjl_prune_nb16,47,31,1.175,1.175,25.0,0.7388834869998391,0.7388310030000866,63.609487594368495,1.1118128466233907,1.0,2989.72412109375,3006.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,0,40,0,47,24,3,0,0,0,0,36,4,4,0,760,0,0,1000,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,packed_kv_qjl_nb16,47,31,1.175,1.175,25.85,0.7620200820019818,0.7619643569996697,61.678164539340536,1.0780557788530456,1.0,3046.40087890625,3066.0,2.4375,1.42822265625,1.7066666666666668,0,0,24,0,760,40,2,38,0,47,24,3,1,0,0,2,38,0,2,2,782,0,0,1034,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init"
+hpc,packed_kv_qjl_strict_nb16,43,31,1.075,1.075,16.925,0.8484418779989937,0.8483896290053963,50.6811381133299,0.8858417598836806,1.0,2988.02294921875,3026.0,2.3125,1.35498046875,1.7066666666666668,0,0,24,0,760,40,0,0,0,43,24,3,0,0,0,40,0,0,40,40,440,0,0,677,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI"
+systems,medusa_base,50,25,1.25,1.25,25.0,0.825291120003385,0.8252537330045016,60.5846819238706,1.0,1.0,3199.53369140625,3206.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,turbo_fast_24,50,25,1.25,1.25,25.0,0.71969228299713,0.7196559680014616,69.47413662930633,1.1467277606013684,1.0,2989.8232421875,3006.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,0,40,0,50,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,qjl_prune_nb16,50,25,1.25,1.25,26.45,0.8711857570015127,0.8711304269963875,57.39304114898791,0.9473193442049719,1.0,2993.07275390625,3006.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,4,34,0,50,24,3,0,0,0,0,30,4,10,6,794,0,0,1058,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,packed_kv_qjl_nb16,50,25,1.25,1.25,26.075,0.7879624289998901,0.7879014670033939,63.454802107077334,1.0473736940108602,1.0,3046.54052734375,3066.0,2.34375,1.373291015625,1.7066666666666668,0,0,24,0,760,40,3,36,0,50,24,3,1,0,0,4,36,0,4,4,785,0,0,1043,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory,"
+systems,packed_kv_qjl_strict_nb16,48,25,1.2,1.2,16.975,0.8018882059986936,0.8018477320001693,59.858718011969614,0.988017368601304,1.0,2988.1044921875,3026.0,2.28125,1.336669921875,1.7066666666666668,0,0,24,0,760,40,0,0,0,48,24,3,0,0,0,40,0,0,40,40,440,0,0,679,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU,"

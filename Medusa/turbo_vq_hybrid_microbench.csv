@@ -1,4 +1,0 @@
-heads,head_dim,kv_len,hot_window,old_len,hybrid_fused_gpu_us,hybrid_fused_wall_us,reference_wall_us,speedup_vs_reference,rel_l2
-8,64,512,128,384,63.29,63.30,886.14,14.00,0.000405
-8,128,512,128,384,170.41,170.41,973.37,5.71,0.000439
-32,128,1024,256,768,737.65,731.22,1865.66,2.55,0.000442

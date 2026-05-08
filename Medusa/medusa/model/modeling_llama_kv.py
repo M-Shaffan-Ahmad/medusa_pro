@@ -22,10 +22,13 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_available,
     logging,
     replace_return_docstrings,
 )
+try:
+    from transformers.utils import is_flash_attn_available
+except ImportError:  # transformers renamed this helper in newer releases
+    from transformers.utils import is_flash_attn_2_available as is_flash_attn_available
 from transformers.models.llama.configuration_llama import LlamaConfig
 
 from .kv_cache import turbo_vq_attention_with_qjl_residual
@@ -198,6 +201,57 @@ class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
 
+class Llama3RotaryEmbedding(LlamaRotaryEmbedding):
+    """RoPE frequency scaling used by Llama 3.1/3.2 long-context checkpoints."""
+
+    def __init__(
+        self,
+        dim,
+        max_position_embeddings=2048,
+        base=10000,
+        device=None,
+        scaling_factor=8.0,
+        low_freq_factor=1.0,
+        high_freq_factor=4.0,
+        original_max_position_embeddings=8192,
+    ):
+        self.scaling_factor = float(scaling_factor)
+        self.low_freq_factor = float(low_freq_factor)
+        self.high_freq_factor = float(high_freq_factor)
+        self.original_max_position_embeddings = int(original_max_position_embeddings)
+        super().__init__(dim, max_position_embeddings, base, device)
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+        wavelen = 2 * math.pi / inv_freq
+        low_freq_wavelen = self.original_max_position_embeddings / self.low_freq_factor
+        high_freq_wavelen = self.original_max_position_embeddings / self.high_freq_factor
+
+        scaled_inv_freq = torch.where(
+            wavelen > low_freq_wavelen,
+            inv_freq / self.scaling_factor,
+            inv_freq,
+        )
+        smooth_factor = (
+            self.original_max_position_embeddings / wavelen - self.low_freq_factor
+        ) / max(1e-6, self.high_freq_factor - self.low_freq_factor)
+        smooth_factor = smooth_factor.clamp(0.0, 1.0)
+        smoothed_inv_freq = (
+            (1.0 - smooth_factor) * inv_freq / self.scaling_factor
+            + smooth_factor * inv_freq
+        )
+        is_medium_freq = (wavelen <= low_freq_wavelen) & (wavelen >= high_freq_wavelen)
+        inv_freq = torch.where(is_medium_freq, smoothed_inv_freq, scaled_inv_freq)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
+
+
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
@@ -271,33 +325,41 @@ class LlamaAttention(nn.Module):
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = config.num_key_value_heads
+        self.num_key_value_heads = getattr(config, "num_key_value_heads", self.num_heads)
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
-        self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
+        self.max_position_embeddings = getattr(config, "max_position_embeddings", 2048)
+        self.rope_theta = getattr(config, "rope_theta", 10000.0)
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias)
+        attention_bias = getattr(config, "attention_bias", False)
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=attention_bias)
+        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=attention_bias)
+        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=attention_bias)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=attention_bias)
         self._init_rope()
 
     def _init_rope(self):
-        if self.config.rope_scaling is None:
+        rope_scaling = getattr(self.config, "rope_scaling", None)
+        if rope_scaling is None:
             self.rotary_emb = LlamaRotaryEmbedding(
                 self.head_dim,
                 max_position_embeddings=self.max_position_embeddings,
                 base=self.rope_theta,
             )
         else:
-            scaling_type = self.config.rope_scaling["type"]
-            scaling_factor = self.config.rope_scaling["factor"]
-            if scaling_type == "linear":
+            scaling_type = rope_scaling.get("type", rope_scaling.get("rope_type", None))
+            scaling_factor = rope_scaling.get("factor", 1.0)
+            if scaling_type in (None, "default"):
+                self.rotary_emb = LlamaRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_position_embeddings,
+                    base=self.rope_theta,
+                )
+            elif scaling_type == "linear":
                 self.rotary_emb = LlamaLinearScalingRotaryEmbedding(
                     self.head_dim,
                     max_position_embeddings=self.max_position_embeddings,
@@ -311,8 +373,25 @@ class LlamaAttention(nn.Module):
                     scaling_factor=scaling_factor,
                     base=self.rope_theta,
                 )
+            elif scaling_type == "llama3":
+                self.rotary_emb = Llama3RotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_position_embeddings,
+                    scaling_factor=scaling_factor,
+                    low_freq_factor=rope_scaling.get("low_freq_factor", 1.0),
+                    high_freq_factor=rope_scaling.get("high_freq_factor", 4.0),
+                    original_max_position_embeddings=rope_scaling.get(
+                        "original_max_position_embeddings",
+                        self.max_position_embeddings,
+                    ),
+                    base=self.rope_theta,
+                )
             else:
-                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+                self.rotary_emb = LlamaRotaryEmbedding(
+                    self.head_dim,
+                    max_position_embeddings=self.max_position_embeddings,
+                    base=self.rope_theta,
+                )
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()

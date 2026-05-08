@@ -1,0 +1,46 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,81,37,2.3142857142857145,2.3142857142857145,25.0,0.6513927999985754,0.6513677279981493,124.34893354697374,1.0,1.0,2754.26318359375,2870.0,2.53515625,1.485443115234375,1.7066666666666668,0,0,665,35,0,35,0,81,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main(int argc, char* argv[]) {
+"
+hpc,turbo_best_full_tree,81,37,2.3142857142857145,2.3142857142857145,25.0,0.5463483490020735,0.5463275280017115,148.25706007522425,1.1922664380488557,1.0,2701.53759765625,2810.0,2.53515625,1.485443115234375,1.7066666666666668,0,0,665,35,0,35,0,81,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main(int argc, char* argv[]) {
+"
+hpc,turbo_fast_24,81,37,2.3142857142857145,2.3142857142857145,25.0,0.547935721999238,0.5479128709994256,147.82755850350023,1.1888124351919533,1.0,2701.53759765625,2810.0,2.53515625,1.485443115234375,1.7066666666666668,0,0,665,35,0,35,0,81,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+int main(int argc, char* argv[]) {
+"
+systems,medusa_base,66,29,1.8857142857142857,1.8857142857142857,25.0,0.5703535489992646,0.5703325720023713,115.71769846230079,1.0,1.0,2755.39208984375,2870.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,665,35,0,35,0,66,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+"
+systems,turbo_best_full_tree,66,29,1.8857142857142857,1.8857142857142857,25.0,0.5466911000003165,0.5466693919988757,120.72631143979075,1.043283033140533,1.0,2701.48828125,2810.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,665,35,0,35,0,66,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+"
+systems,turbo_fast_24,66,29,1.8857142857142857,1.8857142857142857,25.0,0.5462155079985678,0.5461940879977192,120.83142831633602,1.0441914238010983,1.0,2701.48828125,2810.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,665,35,0,35,0,66,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node.
+
+"

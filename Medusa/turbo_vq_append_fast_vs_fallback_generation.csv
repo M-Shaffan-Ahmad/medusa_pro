@@ -1,4 +1,0 @@
-prompt,mode,tokens,total_s,tps,prefix_vs_fast,peak_alloc_mb,notes
-cuda_fusion_short,turbo_vq_b8_strict_fused_append,28,0.8718,32.12,1.0000,2846.9,strict TurboVQ model-level append hook comparison
-cuda_fusion_short,turbo_vq_b8_strict_pytorch_append_fallback,28,0.9124,30.69,0.3333,2846.9,strict TurboVQ model-level append hook comparison
-cuda_fusion_short,turbo_vq_b8_strict_fused_append_repeat,28,0.8404,33.32,1.0000,2846.9,strict TurboVQ model-level append hook comparison

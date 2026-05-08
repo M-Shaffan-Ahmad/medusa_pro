@@ -1,0 +1,7 @@
+head_dim,q_len,kv_len,residual_dim,residual_scale,wrapper_fused_us,reference_us,speedup_vs_reference,rel_l2,notes
+64,1,256,128,1.0,58.21,435.17,7.48,0.000546,decode-specialized wrapper after BLOCK_N tuning
+64,1,512,128,1.0,77.83,448.32,5.76,0.000504,decode-specialized wrapper after BLOCK_N tuning
+128,1,256,128,1.0,85.58,445.74,5.21,0.000475,decode-specialized wrapper after BLOCK_N tuning
+128,1,512,128,1.0,117.25,442.32,3.77,0.000455,decode-specialized wrapper after BLOCK_N tuning
+64,16,256,128,1.0,117.04,453.37,3.87,0.000469,block kernel unchanged by decode tuning
+128,16,256,128,1.0,224.92,446.74,1.99,0.000464,block kernel unchanged by decode tuning

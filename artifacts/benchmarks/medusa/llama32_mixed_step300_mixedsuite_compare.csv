@@ -1,0 +1,154 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,60,31,1.0,1.25,25.0,0.9710211319979862,0.9709927229996538,61.790622287017776,1.0,1.0,3190.69287109375,3204.0,2.84375,1.666259765625,1.7066666666666668,0,0,24,0,912,48,0,48,0,60,24,3,0,0,0,0,0,0,0,0,912,0,0,1200,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init(&argc, &argv);
+
+  // Get the number of processes"
+hpc,turbo_fast_24,60,31,1.0,1.25,25.0,0.8327156879968243,0.8326935579971178,72.05340413885516,1.166089634186992,1.0,2980.9462890625,2984.0,2.84375,1.666259765625,1.7066666666666668,0,0,24,0,912,48,0,48,0,60,24,3,0,0,0,0,0,0,0,0,912,0,0,1200,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init(&argc, &argv);
+
+  // Get the number of processes"
+hpc,turbo_auto,60,31,1.0,1.25,25.0,0.8354236619998119,0.835397640003066,71.81984749674652,1.1623098269368923,1.0,2980.9462890625,2984.0,2.84375,1.666259765625,1.7066666666666668,0,0,24,0,912,48,0,48,0,60,24,3,0,0,0,0,0,0,0,0,912,0,48,1200,"Here is a concise C++ MPI+OpenMP blocked GEMM example:
+```cpp
+#include <mpi.h>
+#include <omp.h>
+
+int main(int argc, char** argv) {
+  // Initialize MPI
+  MPI_Init(&argc, &argv);
+
+  // Get the number of processes"
+systems,medusa_base,60,25,1.0,1.5,25.0,0.8651994410029147,0.8651609950029524,69.34817240571688,1.0,1.0,3190.6923828125,3204.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its"
+systems,turbo_fast_24,60,25,1.0,1.5,25.0,0.6975474789942382,0.6975245919966255,86.01565027015975,1.2403448755207405,1.0,2980.94580078125,2984.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its"
+systems,turbo_auto,60,25,1.0,1.5,25.0,0.6981909160022042,0.6981685200007632,85.93638018603293,1.2392018016461608,1.0,2980.94580078125,2984.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,40,1000,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its"
+chat,medusa_base,60,26,1.0,1.3953488372093024,25.0,0.8676090439985273,0.8675864929973613,69.15557233414667,1.0,1.0,3190.6923828125,3204.0,2.6875,1.57470703125,1.7066666666666668,0,0,24,0,817,43,0,43,0,60,24,3,0,0,0,0,0,0,0,0,817,0,0,1075,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on completing one task at a"
+chat,turbo_fast_24,60,26,1.0,1.3953488372093024,25.0,0.7510576269996818,0.7510198730014963,79.8873453155485,1.1551830549467212,1.0,2980.94580078125,2984.0,2.6875,1.57470703125,1.7066666666666668,0,0,24,0,817,43,0,43,0,60,24,3,0,0,0,0,0,0,0,0,817,0,0,1075,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on completing one task at a"
+chat,turbo_auto,60,26,1.0,1.3953488372093024,25.0,0.7551367190026212,0.7551159510039724,79.45581043820454,1.1489429955736474,1.0,2980.94580078125,2984.0,2.6875,1.57470703125,1.7066666666666668,0,0,24,0,817,43,0,43,0,60,24,3,0,0,0,0,0,0,0,0,817,0,43,1075,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on completing one task at a"
+summarization,medusa_base,60,27,1.0,1.5384615384615385,25.0,0.8355614750034874,0.8355388440031675,71.8080019184101,1.0,1.0,3190.6923828125,3204.0,2.71875,1.593017578125,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,0,975,"Renewable energy storage is crucial for electric grids as it enables the efficient and reliable integration of intermittent renewable energy sources, such as solar and wind power, into the grid. By storing excess energy generated by these sources, renewable energy storage systems can help stabilize the grid, reduce power outages, and"
+summarization,turbo_fast_24,60,27,1.0,1.5384615384615385,25.0,0.6837227069991059,0.6836995960038621,87.75487399466823,1.2220765325621694,1.0,2980.94580078125,2984.0,2.71875,1.593017578125,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,0,975,"Renewable energy storage is crucial for electric grids as it enables the efficient and reliable integration of intermittent renewable energy sources, such as solar and wind power, into the grid. By storing excess energy generated by these sources, renewable energy storage systems can help stabilize the grid, reduce power outages, and"
+summarization,turbo_auto,60,27,1.0,1.5384615384615385,25.0,0.6815959910018137,0.6815731759998016,88.0286867764754,1.225889656092863,1.0,2980.94580078125,2984.0,2.71875,1.593017578125,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,39,975,"Renewable energy storage is crucial for electric grids as it enables the efficient and reliable integration of intermittent renewable energy sources, such as solar and wind power, into the grid. By storing excess energy generated by these sources, renewable energy storage systems can help stabilize the grid, reduce power outages, and"
+reasoning,medusa_base,60,46,1.0,1.5,25.0,0.8278969849998248,0.8278540090032038,72.47278476320662,1.0,1.0,3190.693359375,3204.0,3.3125,1.94091796875,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"## Step 1: Calculate the distance the first train travels before the second train starts.
+The first train travels for 1 hour before the second train starts. Distance = speed * time = 60 mph * 1 hour = 60 miles.
+
+## Step 2: Calculate the relative speed between"
+reasoning,turbo_fast_24,60,46,1.0,1.5,25.0,0.7068329020039528,0.7068114310022793,84.88569197881576,1.1712768076480895,1.0,2980.94677734375,2984.0,3.3125,1.94091796875,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,0,1000,"## Step 1: Calculate the distance the first train travels before the second train starts.
+The first train travels for 1 hour before the second train starts. Distance = speed * time = 60 mph * 1 hour = 60 miles.
+
+## Step 2: Calculate the relative speed between"
+reasoning,turbo_auto,60,46,1.0,1.5,25.0,0.7024941819981905,0.7024723659997107,85.40996002178214,1.1785108065164833,1.0,2980.94677734375,2984.0,3.3125,1.94091796875,1.7066666666666668,0,0,24,0,760,40,0,40,0,60,24,3,0,0,0,0,0,0,0,0,760,0,40,1000,"## Step 1: Calculate the distance the first train travels before the second train starts.
+The first train travels for 1 hour before the second train starts. Distance = speed * time = 60 mph * 1 hour = 60 miles.
+
+## Step 2: Calculate the relative speed between"
+code,medusa_base,60,29,1.0,1.4285714285714286,25.0,0.8470325189991854,0.8470105519954814,70.83553305709353,1.0,1.0,3190.6923828125,3204.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,798,42,0,42,0,60,24,3,0,0,0,0,0,0,0,0,798,0,0,1050,"Here is a Python function that groups strings by their first letter:
+
+```python
+def group_strings_by_first_letter(strings):
+    """"""
+    Groups a list of strings by their first letter.
+
+    Args:
+        strings (list): A list of strings.
+
+    Returns:
+        dict: A dictionary where the"
+code,turbo_fast_24,60,29,1.0,1.4285714285714286,25.0,0.7309951019997243,0.7309727030005888,82.07989333425469,1.1587389801683032,1.0,2980.94580078125,2984.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,798,42,0,42,0,60,24,3,0,0,0,0,0,0,0,0,798,0,0,1050,"Here is a Python function that groups strings by their first letter:
+
+```python
+def group_strings_by_first_letter(strings):
+    """"""
+    Groups a list of strings by their first letter.
+
+    Args:
+        strings (list): A list of strings.
+
+    Returns:
+        dict: A dictionary where the"
+code,turbo_auto,60,29,1.0,1.4285714285714286,25.0,0.7366135440024664,0.7365861430007499,81.45383761746187,1.1499008209878223,1.0,2980.94580078125,2984.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,798,42,0,42,0,60,24,3,0,0,0,0,0,0,0,0,798,0,42,1050,"Here is a Python function that groups strings by their first letter:
+
+```python
+def group_strings_by_first_letter(strings):
+    """"""
+    Groups a list of strings by their first letter.
+
+    Args:
+        strings (list): A list of strings.
+
+    Returns:
+        dict: A dictionary where the"
+creative,medusa_base,60,29,1.0,1.2244897959183674,25.0,1.0001067190023605,1.0000831420038594,59.993597543122185,1.0,1.0,3190.69287109375,3204.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,931,49,0,49,0,60,24,3,0,0,0,0,0,0,0,0,931,0,0,1225,"The moon's pale light cast an eerie glow over the desolate landscape of New Tranquility, a lunar base that had been home to humanity's last hope for generations. The air was heavy with the scent of recycled air and the distant tang of ozone, a reminder of the harsh environment that had"
+creative,turbo_fast_24,60,29,1.0,1.2244897959183674,25.0,0.8525020029992447,0.8524809669979732,70.3810663070702,1.1731429550708592,1.0,2980.9462890625,2984.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,931,49,0,49,0,60,24,3,0,0,0,0,0,0,0,0,931,0,0,1225,"The moon's pale light cast an eerie glow over the desolate landscape of New Tranquility, a lunar base that had been home to humanity's last hope for generations. The air was heavy with the scent of recycled air and the distant tang of ozone, a reminder of the harsh environment that had"
+creative,turbo_auto,60,29,1.0,1.2244897959183674,25.0,0.8513654810012667,0.8513443089977955,70.47502082118211,1.1747090307515913,1.0,2980.9462890625,2984.0,2.78125,1.629638671875,1.7066666666666668,0,0,24,0,931,49,0,49,0,60,24,3,0,0,0,0,0,0,0,0,931,0,49,1225,"The moon's pale light cast an eerie glow over the desolate landscape of New Tranquility, a lunar base that had been home to humanity's last hope for generations. The air was heavy with the scent of recycled air and the distant tang of ozone, a reminder of the harsh environment that had"
+instruction,medusa_base,60,30,1.0,1.5384615384615385,25.0,0.785093221005809,0.7850725590033107,76.42404544409644,1.0,1.0,3190.69287109375,3204.0,2.8125,1.64794921875,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,0,975,"Creating a weekly study plan for machine learning while working part-time requires a balance between dedicating sufficient time to learning and maintaining a work-life balance. Here's a simple plan to help you get started:
+
+**Step 1: Set your goals and schedule**
+
+* Define your learning objectives: What specific areas"
+instruction,turbo_fast_24,60,30,1.0,1.5384615384615385,25.0,0.6893083510003635,0.6892830779979704,87.04377353462291,1.1389579422132885,1.0,2980.9462890625,2984.0,2.8125,1.64794921875,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,0,975,"Creating a weekly study plan for machine learning while working part-time requires a balance between dedicating sufficient time to learning and maintaining a work-life balance. Here's a simple plan to help you get started:
+
+**Step 1: Set your goals and schedule**
+
+* Define your learning objectives: What specific areas"
+instruction,turbo_auto,60,30,1.0,1.5384615384615385,25.0,0.6829440719957347,0.682922284999222,87.85492467145205,1.1495717631922169,1.0,2980.9462890625,2984.0,2.8125,1.64794921875,1.7066666666666668,0,0,24,0,741,39,0,39,0,60,24,3,0,0,0,0,0,0,0,0,741,0,39,975,"Creating a weekly study plan for machine learning while working part-time requires a balance between dedicating sufficient time to learning and maintaining a work-life balance. Here's a simple plan to help you get started:
+
+**Step 1: Set your goals and schedule**
+
+* Define your learning objectives: What specific areas"
+technical_qa,medusa_base,60,25,1.0,1.3043478260869565,25.0,0.933103449002374,0.9330733520037029,64.30155205636514,1.0,1.0,3190.6923828125,3204.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,874,46,0,46,0,60,24,3,0,0,0,0,0,0,0,0,874,0,0,1150,"Latency and throughput are two fundamental concepts in computer networking and web development. While they are related, they serve distinct purposes and have different implications.
+
+**Latency**
+
+Latency refers to the time it takes for data to travel from the time it is sent to the time it is received. It is"
+technical_qa,turbo_fast_24,60,25,1.0,1.3043478260869565,25.0,0.7987233149979147,0.7987014160025865,75.11988053104052,1.1682436602026698,1.0,2980.94580078125,2984.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,874,46,0,46,0,60,24,3,0,0,0,0,0,0,0,0,874,0,0,1150,"Latency and throughput are two fundamental concepts in computer networking and web development. While they are related, they serve distinct purposes and have different implications.
+
+**Latency**
+
+Latency refers to the time it takes for data to travel from the time it is sent to the time it is received. It is"
+technical_qa,turbo_auto,60,25,1.0,1.3043478260869565,25.0,0.8043941260038991,0.8043520380015252,74.5903010232936,1.160007785782676,1.0,2980.94580078125,2984.0,2.65625,1.556396484375,1.7066666666666668,0,0,24,0,874,46,0,46,0,60,24,3,0,0,0,0,0,0,0,0,874,0,46,1150,"Latency and throughput are two fundamental concepts in computer networking and web development. While they are related, they serve distinct purposes and have different implications.
+
+**Latency**
+
+Latency refers to the time it takes for data to travel from the time it is sent to the time it is received. It is"
+comparison,medusa_base,60,24,1.0,1.3636363636363635,25.0,0.8998446959958528,0.8998222410009475,66.67817265244682,1.0,1.0,3190.6923828125,3204.0,2.625,1.5380859375,1.7066666666666668,0,0,24,0,836,44,0,44,0,60,24,3,0,0,0,0,0,0,0,0,836,0,0,1100,"Here's a comparison of SQLite and PostgreSQL for a small analytics dashboard in practical terms:
+
+**1. Data Storage**
+
+* SQLite: A self-contained, file-based database that stores data in a single file. It's easy to set up and use, but it's not designed for large-scale data storage"
+comparison,turbo_fast_24,60,24,1.0,1.3636363636363635,25.0,0.7669104710003012,0.7668898060001084,78.23599007813839,1.17333734512995,1.0,2980.94580078125,2984.0,2.625,1.5380859375,1.7066666666666668,0,0,24,0,836,44,0,44,0,60,24,3,0,0,0,0,0,0,0,0,836,0,0,1100,"Here's a comparison of SQLite and PostgreSQL for a small analytics dashboard in practical terms:
+
+**1. Data Storage**
+
+* SQLite: A self-contained, file-based database that stores data in a single file. It's easy to set up and use, but it's not designed for large-scale data storage"
+comparison,turbo_auto,60,24,1.0,1.3636363636363635,25.0,0.7678473949999898,0.7678258340019966,78.14052686862446,1.1719056440842193,1.0,2980.94580078125,2984.0,2.625,1.5380859375,1.7066666666666668,0,0,24,0,836,44,0,44,0,60,24,3,0,0,0,0,0,0,0,0,836,0,44,1100,"Here's a comparison of SQLite and PostgreSQL for a small analytics dashboard in practical terms:
+
+**1. Data Storage**
+
+* SQLite: A self-contained, file-based database that stores data in a single file. It's easy to set up and use, but it's not designed for large-scale data storage"

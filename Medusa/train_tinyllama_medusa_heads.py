@@ -80,6 +80,15 @@ def parse_args() -> argparse.Namespace:
         help="Optional fraction of ground-truth future-token CE mixed into the self-distill loss.",
     )
     parser.add_argument(
+        "--freeze-legacy-lm-heads",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "For legacy Medusa heads with a per-head vocab projection, freeze the "
+            "large projection and train only the small residual blocks."
+        ),
+    )
+    parser.add_argument(
         "--loss-token-chunk-size",
         type=int,
         default=128,
@@ -106,9 +115,36 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Save the initial heads as the floor and only overwrite with a better validation score.",
     )
+    parser.add_argument(
+        "--checkpoint-dir",
+        default="",
+        help="Directory for resumable checkpoints. Defaults to <output-dir>/checkpoints.",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=200,
+        help="Save a resumable checkpoint every N optimizer steps. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--keep-checkpoints",
+        type=int,
+        default=3,
+        help="Keep only the newest N checkpoint folders. Use 0 to keep all.",
+    )
+    parser.add_argument(
+        "--resume-checkpoint",
+        default="",
+        help="Path to a checkpoint folder, or 'latest' to resume from checkpoint-dir.",
+    )
 
     parser.add_argument("--dtype", choices=("auto", "fp16", "bf16", "fp32"), default="fp16")
     parser.add_argument("--save-dtype", choices=("train", "fp16", "bf16", "fp32"), default="train")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Device to train on, for example auto, cuda, cuda:0, or cpu.",
+    )
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--log-every", type=int, default=10)
     return parser.parse_args()
@@ -126,6 +162,15 @@ def resolve_dtype(name: str, device: torch.device) -> torch.dtype:
         "bf16": torch.bfloat16,
         "fp32": torch.float32,
     }[name]
+
+
+def resolve_device(name: str) -> torch.device:
+    if name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(name)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(f"Requested {name}, but CUDA is not available.")
+    return device
 
 
 def parse_head_weights(raw: str, num_heads: int) -> list[float]:
@@ -356,8 +401,25 @@ def prepare_model(args: argparse.Namespace, device: torch.device, dtype: torch.d
         param.requires_grad_(False)
     for param in model.medusa_head.parameters():
         param.requires_grad_(True)
+    if args.freeze_legacy_lm_heads and not getattr(model, "medusa_head_uses_base_lm_head", False):
+        for head in model.medusa_head:
+            if isinstance(head, torch.nn.Sequential) and len(head) > 0:
+                last_layer = head[-1]
+                if isinstance(last_layer, torch.nn.Linear):
+                    for param in last_layer.parameters():
+                        param.requires_grad_(False)
     model.medusa_head.train()
     return model
+
+
+def compute_head_logits(model: MedusaModel, head_idx: int, hidden: torch.Tensor) -> torch.Tensor:
+    if not getattr(model, "medusa_head_uses_base_lm_head", False):
+        if hidden.is_cuda:
+            with torch.autocast("cuda", enabled=False):
+                return model.medusa_head[head_idx](hidden.float()).float()
+        return model.medusa_head[head_idx](hidden.float()).float()
+    head_output = model.medusa_head[head_idx](hidden)
+    return model.lm_head(head_output)
 
 
 @torch.no_grad()
@@ -478,11 +540,15 @@ def backward_train_batch(
             target_gt = input_ids[:, head_idx + 2 + start : head_idx + 2 + end]
             hidden_chunk = hidden[:, start:end, :]
             with torch.autocast("cuda", dtype=train_dtype, enabled=autocast_enabled):
-                medusa_hidden = model.medusa_head[head_idx](hidden_chunk)
-                logits = model.lm_head(medusa_hidden)
-                flat_logits = logits[chunk_mask]
+                logits = compute_head_logits(model, head_idx, hidden_chunk)
+                flat_logits = torch.nan_to_num(
+                    logits[chunk_mask].float(),
+                    nan=0.0,
+                    posinf=1.0e4,
+                    neginf=-1.0e4,
+                )
                 distill_sum = F.cross_entropy(
-                    flat_logits.float(),
+                    flat_logits,
                     target_distill[chunk_mask],
                     reduction="sum",
                 )
@@ -569,9 +635,13 @@ def evaluate(
                 target_gt = input_ids[:, head_idx + 2 + start : head_idx + 2 + end]
                 hidden_chunk = hidden[:, start:end, :]
                 with torch.autocast("cuda", dtype=train_dtype, enabled=autocast_enabled):
-                    medusa_hidden = model.medusa_head[head_idx](hidden_chunk)
-                    logits = model.lm_head(medusa_hidden)
-                flat_logits = logits[chunk_mask].float()
+                    logits = compute_head_logits(model, head_idx, hidden_chunk)
+                flat_logits = torch.nan_to_num(
+                    logits[chunk_mask].float(),
+                    nan=0.0,
+                    posinf=1.0e4,
+                    neginf=-1.0e4,
+                )
                 targets = target_distill[chunk_mask]
                 distill_sum = F.cross_entropy(flat_logits, targets, reduction="sum")
                 if gt_loss_weight > 0.0:
@@ -618,14 +688,17 @@ def evaluate(
 
 
 def make_output_config(model: MedusaModel, args: argparse.Namespace) -> MedusaConfig:
+    uses_base_lm_head = bool(getattr(model, "medusa_head_uses_base_lm_head", False))
+    version = "2" if uses_base_lm_head else getattr(model.config, "version", None)
     config = MedusaConfig(
         medusa_num_heads=int(model.medusa),
         medusa_num_layers=int(model.medusa_num_layers),
         base_model_name_or_path=getattr(model.config, "_name_or_path", None)
         or getattr(model, "base_model_name_or_path", None),
-        version="2",
+        version=version,
     )
-    config.medusa_head_uses_base_lm_head = True
+    if uses_base_lm_head:
+        config.medusa_head_uses_base_lm_head = True
     return config
 
 
@@ -662,6 +735,120 @@ def save_head_folder(
     )
 
 
+def checkpoint_root(args: argparse.Namespace, output_dir: Path) -> Path:
+    if args.checkpoint_dir:
+        return Path(args.checkpoint_dir).expanduser().resolve()
+    return output_dir / "checkpoints"
+
+
+def checkpoint_step(path: Path) -> int:
+    try:
+        return int(path.name.rsplit("-", 1)[-1])
+    except Exception:
+        return -1
+
+
+def latest_checkpoint(root: Path) -> Path | None:
+    checkpoints = [path for path in root.glob("checkpoint-step-*") if path.is_dir()]
+    if not checkpoints:
+        return None
+    return max(checkpoints, key=checkpoint_step)
+
+
+def prune_old_checkpoints(root: Path, keep: int) -> None:
+    if keep <= 0:
+        return
+    checkpoints = sorted(
+        [path for path in root.glob("checkpoint-step-*") if path.is_dir()],
+        key=checkpoint_step,
+    )
+    for path in checkpoints[:-keep]:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def save_training_checkpoint(
+    root: Path,
+    model: MedusaModel,
+    tokenizer: AutoTokenizer,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.cuda.amp.GradScaler | None,
+    args: argparse.Namespace,
+    save_dtype: torch.dtype,
+    metrics: EvalMetrics,
+    step: int,
+    best_score: float,
+    best_step: int,
+) -> Path:
+    ckpt_dir = root / f"checkpoint-step-{step:06d}"
+    save_head_folder(
+        ckpt_dir,
+        model,
+        tokenizer,
+        args,
+        save_dtype,
+        metrics,
+        step=step,
+        reason="checkpoint",
+    )
+    state = {
+        "step": step,
+        "best_score": best_score,
+        "best_step": best_step,
+        "medusa_head": {
+            key: value.detach().cpu()
+            for key, value in model.medusa_head.state_dict().items()
+        },
+        "optimizer": optimizer.state_dict(),
+        "scaler": scaler.state_dict() if scaler is not None else None,
+        "torch_rng_state": torch.get_rng_state(),
+        "cuda_rng_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        "args": vars(args),
+    }
+    torch.save(state, ckpt_dir / "trainer_state.pt")
+    prune_old_checkpoints(root, int(args.keep_checkpoints))
+    return ckpt_dir
+
+
+def resolve_resume_checkpoint(args: argparse.Namespace, root: Path) -> Path | None:
+    if not args.resume_checkpoint:
+        return None
+    if args.resume_checkpoint == "latest":
+        path = latest_checkpoint(root)
+        if path is None:
+            raise FileNotFoundError(f"No checkpoint found under {root}")
+        return path
+    path = Path(args.resume_checkpoint).expanduser().resolve()
+    if path.is_file():
+        path = path.parent
+    if not (path / "trainer_state.pt").exists():
+        raise FileNotFoundError(f"No trainer_state.pt in {path}")
+    return path
+
+
+def load_training_checkpoint(
+    checkpoint_dir: Path,
+    model: MedusaModel,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.cuda.amp.GradScaler | None,
+    device: torch.device,
+) -> tuple[int, float, int]:
+    state = torch.load(checkpoint_dir / "trainer_state.pt", map_location="cpu")
+    model.medusa_head.load_state_dict(state["medusa_head"], strict=True)
+    model.medusa_head.to(device=device, dtype=torch.float32)
+    optimizer.load_state_dict(state["optimizer"])
+    for opt_state in optimizer.state.values():
+        for key, value in opt_state.items():
+            if torch.is_tensor(value):
+                opt_state[key] = value.to(device)
+    if scaler is not None and state.get("scaler") is not None:
+        scaler.load_state_dict(state["scaler"])
+    if state.get("torch_rng_state") is not None:
+        torch.set_rng_state(state["torch_rng_state"])
+    if torch.cuda.is_available() and state.get("cuda_rng_state") is not None:
+        torch.cuda.set_rng_state_all(state["cuda_rng_state"])
+    return int(state.get("step", 0)), float(state.get("best_score", -float("inf"))), int(state.get("best_step", 0))
+
+
 def copy_tokenizer_sidecars_if_needed(init_dir: Path, output_dir: Path) -> None:
     for name in ("chat_template.jinja",):
         src = init_dir / name
@@ -692,7 +879,7 @@ def main() -> None:
 
     if not torch.cuda.is_available():
         print("WARNING: CUDA is not available. This will be extremely slow on CPU.")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device(args.device)
     train_dtype = resolve_dtype(args.dtype, device)
     save_dtype = train_dtype if args.save_dtype == "train" else resolve_dtype(args.save_dtype, device)
 
@@ -753,37 +940,67 @@ def main() -> None:
     steps_per_epoch = math.ceil(len(train_loader) / max(1, args.grad_accum))
     total_steps = args.max_steps if args.max_steps > 0 else max(1, int(math.ceil(steps_per_epoch * args.epochs)))
     warmup_steps = int(round(total_steps * args.warmup_ratio))
-
-    initial_metrics = evaluate(
-        model,
-        val_loader,
-        device,
-        train_dtype,
-        head_weights,
-        args.gt_loss_weight,
-        args.loss_token_chunk_size,
-        args.argmax_token_chunk_size,
-        args.eval_batches,
-    )
-    print(f"initial: {format_metrics(initial_metrics)}")
-    best_score = initial_metrics.score if args.keep_initial_if_worse else -float("inf")
-    best_step = 0
-    if args.keep_initial_if_worse:
-        save_head_folder(
-            output_dir,
-            model,
-            tokenizer,
-            args,
-            save_dtype,
-            initial_metrics,
-            step=0,
-            reason="initial_floor",
-        )
-        copy_tokenizer_sidecars_if_needed(init_dir, output_dir)
-
+    ckpt_root = checkpoint_root(args, output_dir)
+    resume_path = resolve_resume_checkpoint(args, ckpt_root)
     global_step = 0
+
+    if resume_path is not None:
+        global_step, best_score, best_step = load_training_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scaler,
+            device,
+        )
+        print(f"resumed checkpoint {resume_path} at step={global_step} best_score={best_score:.4f}")
+        last_metrics = evaluate(
+            model,
+            val_loader,
+            device,
+            train_dtype,
+            head_weights,
+            args.gt_loss_weight,
+            args.loss_token_chunk_size,
+            args.argmax_token_chunk_size,
+            args.eval_batches,
+        )
+        print(f"resumed_eval: {format_metrics(last_metrics)}")
+    else:
+        initial_metrics = evaluate(
+            model,
+            val_loader,
+            device,
+            train_dtype,
+            head_weights,
+            args.gt_loss_weight,
+            args.loss_token_chunk_size,
+            args.argmax_token_chunk_size,
+            args.eval_batches,
+        )
+        print(f"initial: {format_metrics(initial_metrics)}")
+        best_score = initial_metrics.score if args.keep_initial_if_worse else -float("inf")
+        best_step = 0
+        last_metrics = initial_metrics
+        if args.keep_initial_if_worse:
+            save_head_folder(
+                output_dir,
+                model,
+                tokenizer,
+                args,
+                save_dtype,
+                initial_metrics,
+                step=0,
+                reason="initial_floor",
+            )
+            copy_tokenizer_sidecars_if_needed(init_dir, output_dir)
+
     optimizer.zero_grad(set_to_none=True)
-    progress = tqdm(total=total_steps, desc="training", dynamic_ncols=True)
+    progress = tqdm(
+        total=total_steps,
+        initial=min(global_step, total_steps),
+        desc="training",
+        dynamic_ncols=True,
+    )
     rolling_loss = 0.0
     rolling_batches = 0
 
@@ -836,8 +1053,10 @@ def main() -> None:
                 rolling_batches = 0
 
             should_eval = args.eval_every > 0 and global_step % args.eval_every == 0
-            if should_eval or global_step >= total_steps:
-                metrics = evaluate(
+            should_checkpoint = args.checkpoint_every > 0 and global_step % args.checkpoint_every == 0
+            should_finish = global_step >= total_steps
+            if should_eval or should_checkpoint or should_finish:
+                last_metrics = evaluate(
                     model,
                     val_loader,
                     device,
@@ -848,9 +1067,9 @@ def main() -> None:
                     args.argmax_token_chunk_size,
                     args.eval_batches,
                 )
-                print(f"\nstep {global_step}: {format_metrics(metrics)}")
-                if metrics.score > best_score + args.min_save_improvement:
-                    best_score = metrics.score
+                print(f"\nstep {global_step}: {format_metrics(last_metrics)}")
+                if last_metrics.score > best_score + args.min_save_improvement:
+                    best_score = last_metrics.score
                     best_step = global_step
                     save_head_folder(
                         output_dir,
@@ -858,7 +1077,7 @@ def main() -> None:
                         tokenizer,
                         args,
                         save_dtype,
-                        metrics,
+                        last_metrics,
                         step=global_step,
                         reason="validation_improved",
                     )
@@ -866,6 +1085,22 @@ def main() -> None:
                     print(f"saved new best to {output_dir}")
                 elif args.keep_initial_if_worse:
                     print(f"kept existing best score={best_score:.4f} from step {best_step}")
+                if should_checkpoint or should_finish:
+                    ckpt_path = save_training_checkpoint(
+                        ckpt_root,
+                        model,
+                        tokenizer,
+                        optimizer,
+                        scaler,
+                        args,
+                        save_dtype,
+                        last_metrics,
+                        global_step,
+                        best_score,
+                        best_step,
+                    )
+                    copy_tokenizer_sidecars_if_needed(init_dir, ckpt_path)
+                    print(f"checkpoint saved to {ckpt_path}")
 
             if global_step >= total_steps:
                 break

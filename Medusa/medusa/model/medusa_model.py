@@ -319,11 +319,22 @@ class MedusaModelABC(nn.Module):
             return model
         except:
             config = MedusaConfig.from_pretrained(pretrained_model_name_or_path)
-            medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
+            medusa_head_state_dict = None
+            try:
+                medusa_head_state_dict = _load_medusa_head_state_dict(pretrained_model_name_or_path)
+            except Exception:
+                warnings.warn(
+                    "No Medusa head sidecar found; initializing Medusa heads from scratch.",
+                    RuntimeWarning,
+                )
             base_model_config = AutoConfig.from_pretrained(config.base_model_name_or_path)
-            base_model_config.medusa_num_heads = _infer_medusa_num_heads_from_state_dict(
-                medusa_head_state_dict,
-                getattr(config, "medusa_num_heads", 5),
+            base_model_config.medusa_num_heads = (
+                _infer_medusa_num_heads_from_state_dict(
+                    medusa_head_state_dict,
+                    getattr(config, "medusa_num_heads", 5),
+                )
+                if medusa_head_state_dict is not None
+                else int(getattr(config, "medusa_num_heads", 5))
             )
             base_model_config.medusa_num_layers = config.medusa_num_layers
             base_model_config.version = getattr(config, "version", None)
@@ -334,7 +345,8 @@ class MedusaModelABC(nn.Module):
                 **kwargs,
                 config=base_model_config,
             )
-            _load_medusa_head_into_model(model, medusa_head_state_dict)
+            if medusa_head_state_dict is not None:
+                _load_medusa_head_into_model(model, medusa_head_state_dict)
             return model
         
 
@@ -455,6 +467,7 @@ class MedusaModelABC(nn.Module):
         attention_mask=None,
         temperature=0.0,
         max_steps=512,
+        max_new_tokens=0,
         # The hyperparameters below are for the Medusa
         # top-1 prediciton for the next token, top-7 predictions for the next token, top-6 predictions for the next next token.
         medusa_choices=None,
@@ -533,6 +546,10 @@ class MedusaModelABC(nn.Module):
             input_ids (torch.Tensor, optional): Input token IDs.
             attention_mask (torch.Tensor, optional): Attention mask.
             temperature (float, optional): Temperature for typical acceptance.
+            max_new_tokens (int, optional): Stop after this many generated token
+                IDs. `0` keeps the historical max-steps-only behavior. When a
+                Medusa step would overrun the target, the accepted prefix is
+                shortened so fixed-token benchmarks compare equal token budgets.
             medusa_choices (list, optional): A list of integers indicating the number of choices for each Medusa head.
             medusa_choice_preset (str, optional): Named choice-tree preset. Useful values
                 include "tinyllama_1b_fast_24" and "tinyllama_1b_balanced_32".
@@ -547,9 +564,9 @@ class MedusaModelABC(nn.Module):
             sampling (str, optional): Defines the sampling strategy ('typical' or 'nucleus'). Defaults to 'typical'.
             fast (bool, optional): If True, enables faster, deterministic decoding for typical sampling. Defaults to False.
             turbo_auto (bool, optional): SGLang/EAGLE-inspired production profile:
-                fast 24-choice verification by default, acceptance-aware 32-choice
-                expansion when the draft looks weak, no QJL planner, no fused LM-head
-                argmax by default.
+                fast 24-choice verification by default, no QJL planner, no fused
+                LM-head argmax by default. Local fixed-token sweeps showed that
+                smaller/adaptive trees lose acceptance and 28+ choices can drift.
             turbo_fast_preset (bool, optional): Use the fastest local profile found so far:
                 24-choice tree plus greedy full-tree fast verifier, with pruning disabled.
             turbo_fused_lm_head_argmax (bool, optional): In greedy Turbo verification,
@@ -684,7 +701,7 @@ class MedusaModelABC(nn.Module):
 
         if turbo_auto:
             turbo_fast_preset = True
-            turbo_adaptive_tree = True
+            turbo_adaptive_tree = False
             turbo_fused_lm_head_argmax = False
             turbo_prune_use_kv_qjl = False
             turbo_prune_use_qjl = False
@@ -907,7 +924,7 @@ class MedusaModelABC(nn.Module):
                 medusa_buffers["medusa_attn_mask"],
                 past_key_values,
                 return_query_state=True,
-                last_token_logits=turbo_quant,
+                last_token_logits=True,
             )
             query_state = query_state.detach()
         else:
@@ -917,11 +934,12 @@ class MedusaModelABC(nn.Module):
                 medusa_buffers["medusa_attn_mask"],
                 past_key_values,
                 return_query_state=False,
-                last_token_logits=turbo_quant,
+                last_token_logits=True,
             )
             query_state = None
 
         new_token = 0
+        target_new_tokens = max(0, int(max_new_tokens))
         last_round_token = 0
         stats = None
         if collect_stats:
@@ -933,6 +951,12 @@ class MedusaModelABC(nn.Module):
                 "turbo_auto_steps": 0,
                 "adaptive_tree_steps": 0,
                 "adaptive_tree_balanced_steps": 0,
+                "adaptive_tree_primary_choice_count": int(len(medusa_choices)),
+                "adaptive_tree_balanced_choice_count": int(
+                    len(adaptive_medusa_choices)
+                    if adaptive_medusa_choices is not None
+                    else 0
+                ),
                 "candidate_paths_considered": 0,
                 "selected_candidate_paths": 0,
                 "verified_tree_nodes": 0,
@@ -1047,6 +1071,8 @@ class MedusaModelABC(nn.Module):
             )
 
         for idx in range(max_steps):
+            if target_new_tokens > 0 and new_token >= target_new_tokens:
+                break
             step_input_len = input_ids.shape[1]
             if turbo_auto and stats is not None:
                 stats["turbo_auto_steps"] += 1
@@ -1499,6 +1525,12 @@ class MedusaModelABC(nn.Module):
                             update_retrieve_indices = pruned["retrieve_indices"]
 
                 if use_tree_update:
+                    if target_new_tokens > 0:
+                        max_accept_len = max(0, target_new_tokens - new_token) - 1
+                        if torch.is_tensor(accept_length):
+                            accept_length = accept_length.clamp_max(max_accept_len)
+                        else:
+                            accept_length = min(int(accept_length), max_accept_len)
                     input_ids, logits, medusa_logits, new_token = update_inference_inputs_from_tree(
                         input_ids,
                         update_candidates,
@@ -1526,6 +1558,12 @@ class MedusaModelABC(nn.Module):
                         query_state = accepted_hidden.detach()
                     accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
                 else:
+                    if target_new_tokens > 0:
+                        max_accept_len = max(0, target_new_tokens - new_token) - 1
+                        if torch.is_tensor(accept_length):
+                            accept_length = accept_length.clamp_max(max_accept_len)
+                        else:
+                            accept_length = min(int(accept_length), max_accept_len)
                     input_ids, logits, medusa_logits, new_token = update_inference_inputs(
                         input_ids,
                         update_candidates,
@@ -1571,6 +1609,12 @@ class MedusaModelABC(nn.Module):
                 )
 
                 # Update the input_ids and logits
+                if target_new_tokens > 0:
+                    max_accept_len = max(0, target_new_tokens - new_token) - 1
+                    if torch.is_tensor(accept_length):
+                        accept_length = accept_length.clamp_max(max_accept_len)
+                    else:
+                        accept_length = min(int(accept_length), max_accept_len)
                 input_ids, logits, medusa_logits, new_token = update_inference_inputs(
                     input_ids,
                     candidates,

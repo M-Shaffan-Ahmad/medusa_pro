@@ -1,0 +1,99 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+chat,medusa_base,46,34,1.3142857142857143,1.3142857142857143,64.0,0.6296076750004431,0.6295862309998483,73.0613711149052,1.0,1.0,2347.27099609375,2458.0,1.71875,1.007080078125,1.7066666666666668,0,0,1470,35,0,35,0,45,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems over"
+chat,turbo_fast_24,46,34,1.3142857142857143,1.3142857142857143,25.0,0.49659519999840995,0.49657265799760353,92.63077854990803,1.267848893832359,1.0,2197.513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,0,665,35,0,35,0,45,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems over"
+chat,turbo_auto,46,34,1.3142857142857143,1.3142857142857143,25.0,0.4975378009985434,0.49751368499710225,92.4552866288338,1.2654469142582525,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,45,24,3,0,0,0,0,0,0,0,0,665,0,35,875,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems over"
+chat,turbo_adaptive_24_32,46,34,1.3142857142857143,1.3142857142857143,25.0,0.49854374200003804,0.498517822001304,92.26873416454697,1.2628935476646603,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,45,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems over"
+summarization,medusa_base,42,33,1.2,1.2,64.0,0.6384818219994486,0.6384555900003761,65.78104270607766,1.0,1.0,2347.2705078125,2458.0,1.611328125,0.9441375732421875,1.7066666666666668,0,0,1470,35,0,35,0,43,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting fossil"
+summarization,turbo_fast_24,40,33,1.1428571428571428,1.1428571428571428,25.0,0.5041081980016315,0.504086847002327,79.3480450398677,1.2062448659321199,1.0,2197.51318359375,2306.0,1.568359375,0.9189605712890625,1.7066666666666668,0,0,665,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting"
+summarization,turbo_auto,40,33,1.1428571428571428,1.1428571428571428,25.685714285714287,0.5005534679985431,0.50052876799964,79.91154303643027,1.2148111332544607,1.0,2198.099609375,2306.0,1.568359375,0.9189605712890625,1.7066666666666668,3,35,680,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,680,0,35,899,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting"
+summarization,turbo_adaptive_24_32,40,33,1.1428571428571428,1.1428571428571428,25.685714285714287,0.5006011330006004,0.5005672650004271,79.90393421652928,1.2146954643688976,1.0,2198.099609375,2306.0,1.568359375,0.9189605712890625,1.7066666666666668,3,35,680,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,680,0,0,899,"Renewable energy storage is crucial for electric grids because it allows for the integration of variable renewable energy sources like wind and solar into the grid, reducing the need for expensive and polluting"
+reasoning,medusa_base,40,56,1.1428571428571428,1.4814814814814814,64.0,0.4940172850001545,0.4939960629999405,80.96882682958652,1.0,1.0,2347.30517578125,2458.0,2.0625,1.20849609375,1.7066666666666668,0,0,1134,27,0,27,0,41,63,4,0,0,0,0,0,0,0,0,1134,0,0,1728,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM. "
+reasoning,turbo_fast_24,39,56,1.1142857142857143,1.4444444444444444,25.0,0.3891870259976713,0.38916638599766884,100.20889031443036,1.2376230981503291,1.0,2198.19287109375,2308.0,2.041015625,1.1959075927734375,1.7066666666666668,0,0,513,27,0,27,0,40,24,3,0,0,0,0,0,0,0,0,513,0,0,675,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+reasoning,turbo_auto,39,56,1.1142857142857143,1.4444444444444444,26.185185185185187,0.3921746539999731,0.39215045500168344,99.44548838692333,1.2281947544605565,1.0,2198.1611328125,2308.0,2.041015625,1.1959075927734375,1.7066666666666668,4,27,533,27,0,27,0,40,24,3,0,0,0,0,0,0,0,0,533,0,27,707,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+reasoning,turbo_adaptive_24_32,39,56,1.1142857142857143,1.4444444444444444,26.185185185185187,0.3941575569988345,0.3941295179974986,98.94520429076874,1.2220160296877802,1.0,2198.1611328125,2308.0,2.041015625,1.1959075927734375,1.7066666666666668,4,27,533,27,0,27,0,40,24,3,0,0,0,0,0,0,0,0,533,0,0,707,"The second train leaves at 4 PM traveling 80 mph on the same route as the first train. Therefore, the second train catches the first train at 3 PM."
+code,medusa_base,56,33,1.6,1.6,64.0,0.6422684150020359,0.6422433280022233,87.19096049557798,1.0,1.0,2347.27197265625,2458.0,1.912109375,1.1203765869140625,1.7066666666666668,0,0,1470,35,0,35,0,57,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups = {}
+    
+    # Loop through each"
+code,turbo_fast_24,47,33,1.3428571428571427,1.3428571428571427,25.0,0.5008321910027007,0.5008125220010697,93.84380805455565,1.0763020331599062,1.0,2197.513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,0,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups ="
+code,turbo_auto,47,33,1.3428571428571427,1.3428571428571427,25.0,0.5004934110002068,0.5004684689993155,93.9073301805777,1.0770305734312946,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,35,875,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups ="
+code,turbo_adaptive_24_32,47,33,1.3428571428571427,1.3428571428571427,25.0,0.500464609998744,0.5004405030013004,93.91273440916822,1.077092554955065,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Sure, here's a small Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings):
+    # Create a dictionary to store the groups
+    groups ="
+creative,medusa_base,41,35,1.1714285714285715,1.1714285714285715,64.0,0.6353459729980386,0.6353244029996858,64.53176968531218,1.0,1.0,2347.2705078125,2458.0,1.6328125,0.95672607421875,1.7066666666666668,0,0,1470,35,0,35,0,41,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities."
+creative,turbo_fast_24,41,35,1.1714285714285715,1.1714285714285715,25.0,0.49865884999962873,0.49863844200081076,82.2205401549186,1.2741094898817331,1.0,2197.51318359375,2306.0,1.6328125,0.95672607421875,1.7066666666666668,0,0,665,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities."
+creative,turbo_auto,41,35,1.1714285714285715,1.1714285714285715,25.914285714285715,0.509390639999765,0.5093616599988309,80.48832620877941,1.247266681221963,1.0,2198.09765625,2306.0,1.6328125,0.95672607421875,1.7066666666666668,4,35,685,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,685,0,35,907,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities."
+creative,turbo_adaptive_24_32,41,35,1.1714285714285715,1.1714285714285715,25.914285714285715,0.5110724670012132,0.5110437059993274,80.22345684277035,1.243162201098441,1.0,2198.09765625,2306.0,1.6328125,0.95672607421875,1.7066666666666668,4,35,685,35,0,35,0,41,24,3,0,0,0,0,0,0,0,0,685,0,0,907,"The moon was a quiet, still place, a place of solitude and reflection. But for the people who called it home, it was a place of constant activity, a place of endless possibilities."
+instruction,medusa_base,57,35,1.6285714285714286,1.6285714285714286,64.0,0.6342365140008042,0.6342152649995114,89.87183604494857,1.0,1.0,2347.2724609375,2458.0,1.9765625,1.15814208984375,1.7066666666666668,0,0,1470,35,0,35,0,57,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- 15"
+instruction,turbo_fast_24,55,35,1.5714285714285714,1.5714285714285714,25.0,0.5006689540023217,0.5006470790031017,109.85302675616862,1.2223298375836746,1.0,2197.51416015625,2306.0,1.93359375,1.132965087890625,1.7066666666666668,0,0,665,35,0,35,0,55,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- "
+instruction,turbo_auto,55,35,1.5714285714285714,1.5714285714285714,25.0,0.5011111919993709,0.5010870929982048,109.75607984438919,1.2212511135245496,1.0,2197.515625,2306.0,1.93359375,1.132965087890625,1.7066666666666668,0,35,665,35,0,35,0,55,24,3,0,0,0,0,0,0,0,0,665,0,35,875,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- "
+instruction,turbo_adaptive_24_32,55,35,1.5714285714285714,1.5714285714285714,25.0,0.5021097780008859,0.5020849319989793,109.53779912229267,1.2188223134498817,1.0,2197.515625,2306.0,1.93359375,1.132965087890625,1.7066666666666668,0,35,665,35,0,35,0,55,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Here's a simple weekly study plan for learning machine learning while working part time:
+
+Monday:
+- 15 minutes of reading on machine learning topics (e.g., data science, deep learning, neural networks, etc.)
+- "
+technical_qa,medusa_base,50,31,1.4285714285714286,1.4285714285714286,64.0,0.6334721669991268,0.6334491609995894,78.93006607829216,1.0,1.0,2347.27099609375,2458.0,1.740234375,1.0196685791015625,1.7066666666666668,0,0,1470,35,0,35,0,50,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in milliseconds ("
+technical_qa,turbo_fast_24,48,31,1.3714285714285714,1.3714285714285714,25.0,0.5071786209991842,0.5071460129984189,94.6412131990816,1.1990514882529717,1.0,2197.51318359375,2306.0,1.697265625,0.9944915771484375,1.7066666666666668,0,0,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in mill"
+technical_qa,turbo_auto,48,31,1.3714285714285714,1.3714285714285714,25.0,0.5062130459991749,0.5061882199988759,94.82173638029518,1.2013386164689104,1.0,2197.5146484375,2306.0,1.697265625,0.9944915771484375,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,35,875,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in mill"
+technical_qa,turbo_adaptive_24_32,48,31,1.3714285714285714,1.3714285714285714,25.0,0.5011913679991267,0.5011663599980238,95.77180108194449,1.2133754073757739,1.0,2197.5146484375,2306.0,1.697265625,0.9944915771484375,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"Latency and throughput are two different concepts in the context of web servers.
+
+Latency:
+Latency is the time it takes for a request to be processed by a web server. It is measured in mill"
+comparison,medusa_base,50,33,1.4285714285714286,1.4285714285714286,64.0,0.6355008860009548,0.6354801300003601,78.67809644552545,1.0,1.0,2347.271484375,2458.0,1.783203125,1.0448455810546875,1.7066666666666668,0,0,1470,35,0,35,0,51,63,4,0,0,0,0,0,0,0,0,1470,0,0,2240,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores data in a"
+comparison,turbo_fast_24,47,33,1.3428571428571427,1.3428571428571427,25.0,0.49983146600061445,0.49981045100139454,94.03169507528008,1.1951445106502423,1.0,2197.513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,0,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores"
+comparison,turbo_auto,47,33,1.3428571428571427,1.3428571428571427,25.0,0.5016861999974935,0.5016621409995423,93.68405987694064,1.1907260611192456,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,35,875,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores"
+comparison,turbo_adaptive_24_32,47,33,1.3428571428571427,1.3428571428571427,25.0,0.5019840390013997,0.5019532370024535,93.62847490828081,1.1900195751826124,1.0,2197.51513671875,2306.0,1.71875,1.007080078125,1.7066666666666668,0,35,665,35,0,35,0,48,24,3,0,0,0,0,0,0,0,0,665,0,0,875,"SQLite and PostgreSQL are both popular relational database management systems (RDBMS) that are widely used for small analytics dashboards. Here are some practical differences between the two:
+
+1. Data Storage: SQLite stores"

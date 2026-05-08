@@ -1,0 +1,83 @@
+# Vicuna 7B Medusa benchmark plan for Kaggle
+#
+# Goal:
+#   Compare plain Vicuna 7B, official Medusa-Vicuna 7B, and our tuned
+#   turbo_fast tree path on the same prompt suite.
+#
+# Kaggle setup:
+#   - Turn GPU on.
+#   - Turn Internet on.
+#   - A100/L4 can usually run FP16. T4/P100 often needs --load-in-8bit.
+
+
+# 0) Install runtime dependencies in a Kaggle notebook cell.
+cd /kaggle/working/Project/Medusa
+python -m pip install -q -U \
+  "transformers==4.45.2" \
+  "accelerate>=0.33" \
+  "tokenizers>=0.20,<0.21" \
+  "safetensors>=0.4.5" \
+  "bitsandbytes>=0.43.3" \
+  "sentencepiece" \
+  "protobuf"
+python -m pip install -q -e .
+
+
+# 1) Optional: log in if Hugging Face asks for a token.
+# export HF_TOKEN=hf_your_token_here
+# huggingface-cli login --token "$HF_TOKEN"
+
+
+# 2) Plain Vicuna 7B base benchmark.
+# Use this for the "speedup vs base autoregressive decoding" number.
+cd /kaggle/working/Project/Medusa
+python bench_transformers_base.py \
+  --model-dir lmsys/vicuna-7b-v1.3 \
+  --out-csv vicuna7b_base_8bit_mixed.csv \
+  --target-new-tokens 160 \
+  --prompt-suite mixed \
+  --load-in-8bit \
+  --device-map auto
+
+
+# 3) Our best TinyLlama setting transferred to official Medusa-Vicuna 7B.
+# This keeps medusa_base on the full Vicuna tree and compares it to turbo_fast_24.
+cd /kaggle/working/Project/Medusa
+python bench_comm_turbo.py \
+  --model-dir FasterDecoding/medusa-vicuna-7b-v1.3 \
+  --out-csv vicuna7b_full_vs_turbo_fast24_8bit_mixed.csv \
+  --max-steps 90 \
+  --target-new-tokens 160 \
+  --prompt-suite mixed \
+  --choice-sweep 24 \
+  --only medusa_base,turbo_fast_24 \
+  --load-in-8bit \
+  --device-map auto
+
+
+# 4) Optional sweep for the final report.
+# Vicuna heads are better trained, so a larger tree may beat 24 choices.
+cd /kaggle/working/Project/Medusa
+python bench_comm_turbo.py \
+  --model-dir FasterDecoding/medusa-vicuna-7b-v1.3 \
+  --out-csv vicuna7b_choice_sweep_8bit_mixed.csv \
+  --max-steps 90 \
+  --target-new-tokens 160 \
+  --prompt-suite mixed \
+  --choice-sweep 24,32,40,63 \
+  --adaptive-sweep 24:40,32:63 \
+  --load-in-8bit \
+  --device-map auto
+
+
+# 5) FP16 version for A100/L4 only.
+# If this OOMs, use the 8-bit commands above and report all Vicuna numbers as 8-bit.
+cd /kaggle/working/Project/Medusa
+python bench_comm_turbo.py \
+  --model-dir FasterDecoding/medusa-vicuna-7b-v1.3 \
+  --out-csv vicuna7b_choice_sweep_fp16_mixed.csv \
+  --max-steps 90 \
+  --target-new-tokens 160 \
+  --prompt-suite mixed \
+  --choice-sweep 24,32,40,63 \
+  --adaptive-sweep 24:40,32:63

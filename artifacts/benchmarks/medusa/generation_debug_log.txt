@@ -1,0 +1,112 @@
+=== MEDUSA VS BASELINE OUTPUT COMPARISON ===
+
+--- Prompt 1: HPC/C++ (Hard) ---
+MATCH: True
+
+[BASELINE RAW]
+"I am not able to run or compile code. However, I can provide you with a sample code that you can use as a reference to write your own parallel matrix multiplication program using mpi and openmp.\n\nhere's a basic example of how you can use mpi and openmp to parallelize matrix multiplication:\n\n```c++\n#"
+
+[MEDUSA RAW]
+"I am not able to run or compile code. However, I can provide you with a sample code that you can use as a reference to write your own parallel matrix multiplication program using mpi and openmp.\n\nhere's a basic example of how you can use mpi and openmp to parallelize matrix multiplication:\n\n```c++\n#"
+
+============================================================
+
+--- Prompt 2: Python (Easy) ---
+MATCH: True
+
+[BASELINE RAW]
+'Here\'s a simple Python function that checks if a given string is a palindrome:\n\n```python\ndef is_palindrome(s):\n    """\n    Check if a given string is a palindrome.\n    :param s: The string to check.\n    :return: True if the string is a palindrome, False otherwise.\n    """\n    s = s.lower()\n    if s'
+
+[MEDUSA RAW]
+'Here\'s a simple Python function that checks if a given string is a palindrome:\n\n```python\ndef is_palindrome(s):\n    """\n    Check if a given string is a palindrome.\n    :param s: The string to check.\n    :return: True if the string is a palindrome, False otherwise.\n    """\n    s = s.lower()\n    if s'
+
+============================================================
+
+--- Prompt 3: Sci-Fi Writing (Medium) ---
+MATCH: False
+
+[BASELINE RAW]
+'The probe, named "Aurora," was a small, sleek machine designed to explore the unknown. It had been sent on a mission to explore the event horizon of a black hole, the point at which the gravitational pull of the black hole is so strong that nothing, not even light, can escape.\n\nAurora had been trave'
+
+[MEDUSA RAW]
+'The probe, named "Aurora," was a small, sleek machine designed to explore the unknown. It had been sent on a mission to explore the event horizon of a black hole, the point at which the gravitational pull of the black hole is so strong that nothing, not even light, can escape.\n\nAurora had been trave'
+
+============================================================
+
+--- Prompt 4: History (Easy) ---
+MATCH: False
+
+[BASELINE RAW]
+"The French Revolution was a complex and multifaceted event that resulted from a series of events and factors. Here are some of the primary causes:\n\n1. Economic Crisis: The French economy was in a state of crisis due to the French Revolution's impact on trade and commerce. The French monarchy had bee"
+
+[MEDUSA RAW]
+"The French Revolution was a complex and multifaceted event that resulted from a series of events and factors. Here are some of the primary causes:\n\n1. Economic Crisis: The French economy was in a state of crisis due to the French Revolution's impact on trade and commerce. The French monarchy had bee"
+
+============================================================
+
+--- Prompt 5: Math/Logic (Hard) ---
+MATCH: False
+
+[BASELINE RAW]
+'I can provide a mathematical proof of the pythagorean theorem, but I would need more information to do so.\n\nthe pythagorean theorem states that in a right-angled triangle, the square of the length of one side (a) is equal to the sum of the squares of the lengths of the other two sides (b) and (c).\n\n'
+
+[MEDUSA RAW]
+'I can provide a mathematical proof of the pythagorean theorem, but I would need more information to do so.\n\nthe pythagorean theorem states that in a right-angled triangle, the square of the length of one side (a) is equal to the sum of the squares of the lengths of the other two sides (b) and (c).\n\n'
+
+============================================================
+
+--- Prompt 6: Cooking/Recipe (Easy) ---
+MATCH: True
+
+[BASELINE RAW]
+"Sure, here's a highly detailed recipe for making authentic Italian carbonara from scratch:\n\nIngredients:\n- 1 pound pancetta or bacon, diced\n- 1 large egg\n- 1/2 cup grated Parmesan cheese\n- 1/2 cup grated Pecorino Romano cheese\n- 1/2 cup grated Pecorino Romano cheese\n- 1/2 cup grated Pecorino Romano "
+
+[MEDUSA RAW]
+"Sure, here's a highly detailed recipe for making authentic Italian carbonara from scratch:\n\nIngredients:\n- 1 pound pancetta or bacon, diced\n- 1 large egg\n- 1/2 cup grated Parmesan cheese\n- 1/2 cup grated Pecorino Romano cheese\n- 1/2 cup grated Pecorino Romano cheese\n- 1/2 cup grated Pecorino Romano "
+
+============================================================
+
+--- Prompt 7: Biology (Medium) ---
+MATCH: True
+
+[BASELINE RAW]
+'Cellular respiration is the process by which cells produce energy (ATP) from glucose (C6H12O6) through a series of chemical reactions. The process involves several stages, including glycolysis, the Krebs cycle, and the electron transport chain.\n\n1. Glycolysis: This stage occurs in the cytoplasm of t'
+
+[MEDUSA RAW]
+'Cellular respiration is the process by which cells produce energy (ATP) from glucose (C6H12O6) through a series of chemical reactions. The process involves several stages, including glycolysis, the Krebs cycle, and the electron transport chain.\n\n1. Glycolysis: This stage occurs in the cytoplasm of t'
+
+============================================================
+
+--- Prompt 8: Physics (Medium) ---
+MATCH: True
+
+[BASELINE RAW]
+'Quantum entanglement is a phenomenon in which two particles, such as photons or electrons, become connected in such a way that their states are correlated even if they are separated by great distances. This means that the state of one particle is determined by the state of the other particle, even i'
+
+[MEDUSA RAW]
+'Quantum entanglement is a phenomenon in which two particles, such as photons or electrons, become connected in such a way that their states are correlated even if they are separated by great distances. This means that the state of one particle is determined by the state of the other particle, even i'
+
+============================================================
+
+--- Prompt 9: Economics (Medium) ---
+MATCH: True
+
+[BASELINE RAW]
+'Raising interest rates to combat high inflation can have several macroeconomic effects:\n\n1. Reduced inflation: Raising interest rates can slow down the rate of inflation by making it more expensive for businesses and consumers to borrow money. This can help to reduce the overall level of inflation.\n'
+
+[MEDUSA RAW]
+'Raising interest rates to combat high inflation can have several macroeconomic effects:\n\n1. Reduced inflation: Raising interest rates can slow down the rate of inflation by making it more expensive for businesses and consumers to borrow money. This can help to reduce the overall level of inflation.\n'
+
+============================================================
+
+--- Prompt 10: Philosophy (Hard) ---
+MATCH: True
+
+[BASELINE RAW]
+"Immanuel Kant's Categorical Imperative and Utilitarianism are two of the most influential philosophical theories in the history of Western philosophy. Here is a comparison and contrast of these two theories:\n\n1. Categorical Imperative:\nThe Categorical Imperative is a moral principle that states that"
+
+[MEDUSA RAW]
+"Immanuel Kant's Categorical Imperative and Utilitarianism are two of the most influential philosophical theories in the history of Western philosophy. Here is a comparison and contrast of these two theories:\n\n1. Categorical Imperative:\nThe Categorical Imperative is a moral principle that states that"
+
+============================================================
+

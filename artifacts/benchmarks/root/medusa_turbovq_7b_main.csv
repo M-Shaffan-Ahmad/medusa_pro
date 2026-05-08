@@ -1,0 +1,61 @@
+prompt,mode,text,tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_match_vs_base
+hpc,medusa_base,"Here is an example of an optimized MPI+OpenMP blocked GEMM with overlap of communication and compute:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <mpi.h>
+#include <x86_thread.h>
+
+#define BLOCK_SIZE 1024
+#define NUM_BLOCKS 10",96,21.43366284900003,0.43092981600011626,4.478935806554352,9048.5556640625,9496.0,1.0
+hpc,turbo_prune_only,"Here is an example of an optimized MPI+OpenMP blocked GEMM with overlap of communication and compute:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <mpi.h>
+#include <x86_thread.h>
+
+#define BLOCK_SIZE 1024
+#define NUM_BLOCKS 10",96,26.679332719000286,0.5502411560000837,3.598290894720596,8164.34033203125,8360.0,1.0
+hpc,turbo_vq_shadow,"Here is an example of an optimized MPI+OpenMP blocked GEMM with overlap of communication and compute:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <mpi.h>
+#include <x86_thread.h>
+
+#define BLOCK_SIZE 1024
+#define NUM_BLOCKS 10",96,28.52791798499993,0.5624467709999408,3.365124649141136,9703.5302734375,9982.0,1.0
+hpc,turbo_vq_strict,"Here is an example of an optimized MPI+OpenMP blocked GEMM with overlap of communication and compute:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <mpi.h>
+#include <x86_thread.h>
+
+#define BLOCKSIZE 1024
+
+void gf_gemm(MPI_Comm comm, int n, int k",96,32.981906844999685,0.5381590029996914,2.9106867729375794,9235.5615234375,9640.0,0.624
+systems,medusa_base,"Strong scaling and weak scaling are two concepts used to describe the performance of a parallel computing system.
+
+Strong scaling refers to the improvement in performance as the number of processors or cores in a system increases. In other words, it is the ability of a system to achieve high performance as the number of processors increases. Strong scaling is achieved when the number of processors is increased without increasing the problem size or the amount of data being processed.
+
+For",96,21.985037680999994,0.44428784899992024,4.366606116075277,8701.52685546875,9082.0,1.0
+systems,turbo_prune_only,"Strong scaling and weak scaling are two concepts used to describe the performance of a parallel computing system.
+
+Strong scaling refers to the improvement in performance as the number of processors or cores in a system increases. In other words, it is the ability of a system to achieve high performance as the number of processors increases. Strong scaling is achieved when the number of processors is increased without increasing the problem size or the amount of data being processed.
+
+For",96,25.955254147999767,0.5650363730001118,3.698673087637564,8164.89404296875,8360.0,1.0
+systems,turbo_vq_shadow,"Strong scaling and weak scaling are two concepts used to describe the performance of a parallel computing system.
+
+Strong scaling refers to the improvement in performance as the number of processors or cores in a system increases. In other words, it is the ability of a system to achieve high performance as the number of processors increases. Strong scaling is achieved when the number of processors is increased without increasing the problem size or the amount of data being processed.
+
+For",96,27.641053917000136,0.5395373209998979,3.473094777365089,9703.5322265625,9980.0,1.0
+systems,turbo_vq_strict,"Strong scaling and weak scaling are two concepts used to describe the performance of a parallel computing system.
+
+Strong scaling refers to the performance improvement that can be achieved by increasing the number of processors or cores in a system. In other words, it is the ability of a system to perform more work as the number of processors increases. This is typically achieved by increasing the number of processors in a system while keeping the workload per processor constant.
+
+For",96,30.657536859000174,0.5747199080001337,3.131367025391577,9235.5634765625,9648.0,0.2936344969199179

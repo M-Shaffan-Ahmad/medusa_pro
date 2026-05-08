@@ -1,7 +1,0 @@
-{
-  "base_model_name_or_path": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-  "medusa_num_heads": 4,
-  "medusa_num_layers": 1,
-  "transformers_version": "5.7.0",
-  "version": "2"
-}

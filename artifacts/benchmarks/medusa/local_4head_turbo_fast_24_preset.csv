@@ -1,0 +1,22 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,stat_candidate_paths_considered,stat_decode_steps,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_generated_tokens,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_verified_tree_nodes,text
+hpc,medusa_base,49,37,1.4,1.4,64.0,0.6297623290010961,0.62974091200158,77.80713095005515,1.0,1.0,2347.259765625,2458.0,1.84765625,1.082611083984375,1.7066666666666668,1470,35,0,35,49,63,4,0,0,0,0,0,0,0,0,1470,0,2240,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include"
+hpc,turbo_best_full_tree,49,37,1.4,1.4,64.0,0.5529190579982242,0.5528900309982419,88.6205662315177,1.1389774323950301,1.0,2200.4541015625,2310.0,1.84765625,1.082611083984375,1.7066666666666668,1470,35,0,35,49,63,4,0,0,0,0,0,0,0,0,1470,0,2240,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include"
+hpc,turbo_fast_24,48,37,1.3714285714285714,1.3714285714285714,25.0,0.5009159809997072,0.500892970001587,95.82445324304408,1.2315638948897158,1.0,2197.4873046875,2306.0,1.826171875,1.0700225830078125,1.7066666666666668,665,35,0,35,48,24,3,0,0,0,0,0,0,0,0,665,0,875,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#"
+systems,medusa_base,42,29,1.2,1.2,64.0,0.6319540059994324,0.6319332429993665,66.46053288890414,1.0,1.0,2347.2578125,2458.0,1.525390625,0.8937835693359375,1.7066666666666668,1470,35,0,35,42,63,4,0,0,0,0,0,0,0,0,1470,0,2240,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This"
+systems,turbo_best_full_tree,42,29,1.2,1.2,64.0,0.5514154390002659,0.5513940870005172,76.1676170622777,1.1460578745223122,1.0,2200.4521484375,2310.0,1.525390625,0.8937835693359375,1.7066666666666668,1470,35,0,35,42,63,4,0,0,0,0,0,0,0,0,1470,0,2240,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This"
+systems,turbo_fast_24,41,29,1.1714285714285715,1.1714285714285715,25.0,0.49260038699867437,0.4925797159994545,83.23176571136217,1.2523487563738458,1.0,2197.48681640625,2306.0,1.50390625,0.881195068359375,1.7066666666666668,665,35,0,35,41,24,3,0,0,0,0,0,0,0,0,665,0,875,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant."

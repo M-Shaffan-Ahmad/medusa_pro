@@ -1,0 +1,46 @@
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+
+env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python train_tinyllama_medusa_heads.py \
+  --init-medusa-dir TinyLlama-1.1B-Chat-v1.0-4heads \
+  --output-dir ../artifacts/model_outputs/medusa_tinyllama_heads_selfdistill_3060 \
+  --data-path ../artifacts/model_outputs/medusa_training_local/medusa_train_mix_70_15_10_5.jsonl \
+  --seq-len 768 \
+  --micro-batch-size 1 \
+  --grad-accum 24 \
+  --learning-rate 1e-5 \
+  --max-steps 1200 \
+  --eval-every 100 \
+  --eval-batches 48 \
+  --checkpoint-dir ../artifacts/model_outputs/medusa_training_local/checkpoints \
+  --checkpoint-every 100 \
+  --keep-checkpoints 3 \
+  --resume-checkpoint latest \
+  --loss-token-chunk-size 128 \
+  --argmax-token-chunk-size 128 \
+  --dtype fp16 \
+  --device cuda:0
+
+
+
+benchmark
+
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+
+env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python bench_comm_turbo.py \
+  --model-dir ../artifacts/model_outputs/medusa_tinyllama_heads_selfdistill_3060 \
+  --out-csv ../artifacts/benchmarks/medusa/local_selfdistill_3060_step1200_eval.csv \
+  --max-steps 35 \
+  --choice-limit 24 \
+  --only medusa_base,turbo_fast_24,turbo_best_full_tree
+
+
+compare against original 
+
+cd /home/shaffan/Desktop/Uni/PDC/Project/Medusa
+
+env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 ./medusa_env/bin/python bench_comm_turbo.py \
+  --model-dir TinyLlama-1.1B-Chat-v1.0-4heads \
+  --out-csv ../artifacts/benchmarks/medusa/local_original_heads_eval.csv \
+  --max-steps 35 \
+  --choice-limit 24 \
+  --only medusa_base,turbo_fast_24,turbo_best_full_tree

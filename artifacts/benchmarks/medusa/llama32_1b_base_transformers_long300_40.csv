@@ -1,0 +1,4 @@
+prompt,mode,prompt_tokens,tokens,seconds,tps,alloc_mb,text
+long_context,base_transformers,10824,40,2.8447123520018067,14.061175630587833,3383.07177734375,"Here are the most important optimization bottlenecks in five bullets:
+
+• **Cache Locality**: Cache locality is the most critical optimization bottleneck in CPU and GPU programs. It refers to the ability of the"

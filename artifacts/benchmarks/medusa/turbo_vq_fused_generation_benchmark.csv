@@ -1,0 +1,4 @@
+prompt,mode,tokens,total_s,tps,prefix_vs_medusa,peak_alloc_mb,notes
+cuda_reduction,medusa_base,85,0.9160,92.80,1.0000,2856.3,baseline Medusa tree decode
+cuda_reduction,turbo_vq_b4_res128_fused,94,1.6024,58.66,0.1875,2837.7,strict compressed TurboVQ fused residual-QJL attention full-tree gate
+cuda_reduction,turbo_vq_b8_res128_fused,85,1.3830,61.46,1.0000,2838.1,strict compressed TurboVQ fused residual-QJL attention full-tree gate

@@ -1,0 +1,96 @@
+prompt,mode,tokens,prompt_tokens,total_s,ttft_s,tps,peak_alloc_mb,peak_reserved_mb,prefix_vs_base,text
+hpc,medusa_base,181,34,1.8182151490000251,0.034059481999975105,99.54817508783033,2856.2548828125,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,prune_prev_qjl_k12,181,34,2.248121161999734,0.03518504200019379,80.51167484184798,2856.26416015625,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,prune_nodegate_qjl_k12,181,34,1.8765964069998518,0.03463644099974772,96.45121312438616,2856.26416015625,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,prune_decisive_qjl_k12_keep8,181,34,1.9074139820004348,0.03583003699986875,94.89287679970396,2856.26416015625,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+hpc,prune_decisive_qjl_k10_keep6,181,34,1.979828687999543,0.03459158299938281,91.42205136086086,2856.27587890625,2964.0,1.0,"To optimize the MPI+OpenMP blocked GEMM with overlap of communication and compute, we can follow the following steps:
+
+1. Define the MPI+OpenMP parallelization strategy:
+   - Define the number of MPI processes (nproc) and the number of threads per process (ntp) using the MPI_Comm_size and MPI_Comm_rank functions.
+   - Define the overlap factor (overlap) using the MPI_Comm_split function.
+
+   ```c++
+   int nproc, ntp;
+   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+   MPI_Comm_rank(MPI_COMM_WORLD, &ntp);
+   double overlap = 0.5; // Overlap factor
+
+   M"
+systems,medusa_base,210,28,1.9415040479998424,0.03391592699972534,108.16356536384468,2856.27392578125,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of"
+systems,prune_prev_qjl_k12,199,28,1.8992896399995516,0.03441159999965748,104.77601510007025,2856.30029296875,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can"
+systems,prune_nodegate_qjl_k12,199,28,1.9021416939995106,0.03391406099945016,104.61891489354589,2856.30029296875,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can"
+systems,prune_decisive_qjl_k12_keep8,199,28,1.8899044700001468,0.03498260699961975,105.29632749108453,2856.29931640625,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can"
+systems,prune_decisive_qjl_k10_keep6,203,28,2.07243751399983,0.03283415999976569,97.9522898175142,2856.326171875,2964.0,1.0,"Strong scaling and weak scaling are two fundamental concepts in high-performance computing (HPC). In strong scaling, a system is designed to handle a large number of parallel processes simultaneously. In weak scaling, a system is designed to handle a large number of parallel processes simultaneously while also scaling the number of processors used to handle each process.
+
+Strong scaling is commonly used in HPC applications where the number of parallel processes is limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number of tasks, while a cluster of processors can handle many tasks simultaneously. In this case, strong scaling is used to maximize the number of parallel processes that can be handled by the system.
+
+On the other hand, weak scaling is commonly used in HPC applications where the number of parallel processes is not limited by the number of processors available. For example, in a supercomputer, a single processor can handle a limited number"
+medium_context,medusa_base,125,2369,2.3573149169997123,0.47881349099952786,53.026432361058724,4051.67236328125,4298.0,1.0,"andgrards andcomsmarks andarchs andarchs andcoms andcoms andcoms andcoms andcoms andcoms ands andcomsug ands and GPUs andcoms and CPUs ands ands ands, ands, ands, ands, ands, andc ands/CPs ands ands ands andsCPs ands ands/CPs andcs ands/CPs/CPs ands/CPs,s/CPs ands, ands, ands/and ands/CP"
+medium_context,prune_prev_qjl_k12,125,2369,2.368023723999613,0.48124304199973267,52.78663331500492,4052.68212890625,4322.0,1.0,"andgrards andcomsmarks andarchs andarchs andcoms andcoms andcoms andcoms andcoms andcoms ands andcomsug ands and GPUs andcoms and CPUs ands ands ands, ands, ands, ands, ands, andc ands/CPs ands ands ands andsCPs ands ands/CPs andcs ands/CPs/CPs ands/CPs,s/CPs ands, ands, ands/and ands/CP"
+medium_context,prune_nodegate_qjl_k12,125,2369,2.336702196999795,0.4783143909999126,53.4941937233138,4052.68701171875,4322.0,1.0,"andgrards andcomsmarks andarchs andarchs andcoms andcoms andcoms andcoms andcoms andcoms ands andcomsug ands and GPUs andcoms and CPUs ands ands ands, ands, ands, ands, ands, andc ands/CPs ands ands ands andsCPs ands ands/CPs andcs ands/CPs/CPs ands/CPs,s/CPs ands, ands, ands/and ands/CP"
+medium_context,prune_decisive_qjl_k12_keep8,125,2369,2.347823719000189,0.4759114190001128,53.2407944380214,4052.68701171875,4322.0,1.0,"andgrards andcomsmarks andarchs andarchs andcoms andcoms andcoms andcoms andcoms andcoms ands andcomsug ands and GPUs andcoms and CPUs ands ands ands, ands, ands, ands, ands, andc ands/CPs ands ands ands andsCPs ands ands/CPs andcs ands/CPs/CPs ands/CPs,s/CPs ands, ands, ands/and ands/CP"
+medium_context,prune_decisive_qjl_k10_keep6,124,2369,2.40744998900027,0.47879080599977897,51.50678126921045,4052.68701171875,4324.0,0.5763888888888888,"andgrards andcomsmarks andarchs andarchs andcoms andcoms andcoms andcoms andcoms andcoms ands andcomsug ands and GPUs andcoms and CPUs ands ands ands, ands, ands, and UCP, ands andc ands ands/CPs ands ands ands ands ands ands/CPs andcs ands/CPs/CPs ands/CPs,s/CPs ands, ands, ands/and ands/"

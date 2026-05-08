@@ -5,8 +5,10 @@ import os
 import re
 import sys
 import time
+from collections import defaultdict
 
 import torch
+from transformers import BitsAndBytesConfig
 
 sys.path.insert(0, os.path.dirname(__file__))
 from medusa.model.medusa_model import MedusaModel
@@ -135,7 +137,106 @@ def build_prompts(long_repeat, long_only=False, prompt_suite="technical"):
     return prompts
 
 
+def parse_int_csv(value):
+    if not value:
+        return []
+    parsed = []
+    for item in str(value).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        parsed.append(int(item))
+    seen = set()
+    unique = []
+    for item in parsed:
+        if item <= 0 or item in seen:
+            continue
+        seen.add(item)
+        unique.append(item)
+    return unique
+
+
+def parse_adaptive_pairs(value):
+    if not value:
+        return []
+    pairs = []
+    for item in str(value).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        for sep in (":", "->", "-", "/"):
+            if sep in item:
+                left, right = item.split(sep, 1)
+                break
+        else:
+            raise ValueError(
+                f"Adaptive sweep item '{item}' must look like 16:24 or 16->32."
+            )
+        base_limit = int(left.strip())
+        balanced_limit = int(right.strip())
+        if base_limit <= 0 or balanced_limit <= 0:
+            continue
+        if balanced_limit <= base_limit:
+            raise ValueError(
+                f"Adaptive sweep item '{item}' must expand to a larger tree."
+            )
+        pairs.append((base_limit, balanced_limit))
+    seen = set()
+    unique = []
+    for pair in pairs:
+        if pair in seen:
+            continue
+        seen.add(pair)
+        unique.append(pair)
+    return unique
+
+
+def build_static_tree_sweep_modes(args):
+    choice_limits = parse_int_csv(args.choice_sweep)
+    adaptive_pairs = parse_adaptive_pairs(args.adaptive_sweep)
+    if not choice_limits and not adaptive_pairs:
+        return None
+
+    modes = [("medusa_base", {})]
+    for limit in choice_limits:
+        modes.append(
+            (
+                f"turbo_fast_{limit}",
+                {
+                    "turbo_fast_preset": True,
+                    "medusa_choice_limit": int(limit),
+                    "_use_model_choice_resolution": True,
+                },
+            )
+        )
+    for base_limit, balanced_limit in adaptive_pairs:
+        modes.append(
+            (
+                f"turbo_adaptive_{base_limit}_{balanced_limit}",
+                {
+                    "turbo_fast_preset": True,
+                    "medusa_choice_limit": int(base_limit),
+                    "turbo_adaptive_tree": True,
+                    "turbo_adaptive_tree_balanced_limit": int(balanced_limit),
+                    "turbo_adaptive_tree_confidence_threshold": args.adaptive_tree_confidence_threshold,
+                    "turbo_adaptive_tree_check_interval": args.adaptive_tree_check_interval,
+                    "turbo_adaptive_tree_accept_threshold": args.adaptive_tree_accept_threshold,
+                    "_use_model_choice_resolution": True,
+                },
+            )
+        )
+    return modes
+
+
 def build_modes(args):
+    static_tree_sweep_modes = build_static_tree_sweep_modes(args)
+    if static_tree_sweep_modes is not None:
+        modes = static_tree_sweep_modes
+        if args.only:
+            wanted = {item.strip() for item in args.only.split(",") if item.strip()}
+            modes = [(name, kwargs) for name, kwargs in modes if name in wanted]
+        return modes
+
     node_budget_name = f"nb{args.node_budget}" if args.node_budget > 0 else "nball"
     modes = [
         ("medusa_base", {}),
@@ -368,6 +469,72 @@ def build_modes(args):
     return modes
 
 
+def safe_float(value, default=0.0):
+    try:
+        if value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def print_mode_summary(rows):
+    by_mode = defaultdict(list)
+    for row in rows:
+        by_mode[row["mode"]].append(row)
+    if not by_mode:
+        return
+
+    print("")
+    print("summary by mode:")
+    summary_rows = []
+    for mode, mode_rows in by_mode.items():
+        n = max(1, len(mode_rows))
+        avg_tps = sum(safe_float(row.get("tps")) for row in mode_rows) / n
+        avg_speedup = sum(safe_float(row.get("speedup_vs_base")) for row in mode_rows) / n
+        avg_accept = sum(safe_float(row.get("accepted_tokens_per_step")) for row in mode_rows) / n
+        avg_nodes = sum(safe_float(row.get("verified_nodes_per_step")) for row in mode_rows) / n
+        avg_prefix = sum(safe_float(row.get("prefix_match_vs_base")) for row in mode_rows) / n
+        adaptive_steps = sum(safe_float(row.get("stat_adaptive_tree_steps")) for row in mode_rows)
+        balanced_steps = sum(safe_float(row.get("stat_adaptive_tree_balanced_steps")) for row in mode_rows)
+        balanced_ratio = balanced_steps / max(1.0, adaptive_steps)
+        summary_rows.append(
+            {
+                "mode": mode,
+                "avg_tps": avg_tps,
+                "avg_speedup": avg_speedup,
+                "avg_accept": avg_accept,
+                "avg_nodes": avg_nodes,
+                "avg_prefix": avg_prefix,
+                "balanced_ratio": balanced_ratio,
+            }
+        )
+        print(
+            mode,
+            f"avg_tps={avg_tps:.2f}",
+            f"speedup={avg_speedup:.3f}",
+            f"accept/step={avg_accept:.3f}",
+            f"nodes/step={avg_nodes:.1f}",
+            f"prefix={avg_prefix:.3f}",
+            f"balanced={balanced_ratio:.2f}",
+        )
+
+    candidates = [
+        row
+        for row in summary_rows
+        if row["mode"] != "medusa_base" and row["avg_prefix"] >= 0.999
+    ]
+    if candidates:
+        winner = max(candidates, key=lambda row: row["avg_tps"])
+        print(
+            "winner",
+            winner["mode"],
+            f"avg_tps={winner['avg_tps']:.2f}",
+            f"accept/step={winner['avg_accept']:.3f}",
+            f"nodes/step={winner['avg_nodes']:.1f}",
+        )
+
+
 def run_one(model, prompt, medusa_choices, args, mode, kwargs):
     reset_memory()
     sync()
@@ -389,6 +556,7 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
             medusa_choices=call_medusa_choices,
             temperature=0.0,
             max_steps=args.max_steps,
+            max_new_tokens=args.target_new_tokens,
             sampling="typical",
             fast=True,
             turbo_kv_max_length=args.kv_max_length,
@@ -402,7 +570,11 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
     sync()
     end = time.perf_counter()
 
-    tokens = max(1, len(model.tokenizer(text, add_special_tokens=False).input_ids))
+    exact_generated_tokens = int(stats.get("generated_tokens", 0) or 0)
+    if exact_generated_tokens > 0:
+        tokens = exact_generated_tokens
+    else:
+        tokens = max(1, len(model.tokenizer(text, add_special_tokens=False).input_ids))
     prompt_tokens = int(inputs.input_ids.shape[1])
     kv_len = prompt_tokens + tokens
     fp16_kv_mb = estimate_fp16_kv_mb(model.config, kv_len)
@@ -449,12 +621,37 @@ def main():
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
     parser.add_argument("--out-csv", default="Medusa/comm_turbo_benchmark.csv")
     parser.add_argument("--max-steps", type=int, default=35)
+    parser.add_argument(
+        "--target-new-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Stop each generation after this many generated token IDs. "
+            "Use this for fair tree-size sweeps where accepted tokens/step differs."
+        ),
+    )
     parser.add_argument("--kv-max-length", type=int, default=2048)
     parser.add_argument("--long-repeat", type=int, default=0)
     parser.add_argument("--long-only", action="store_true")
     parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed"), default="technical")
     parser.add_argument("--choice-max-depth", type=int, default=0)
     parser.add_argument("--choice-limit", type=int, default=0)
+    parser.add_argument(
+        "--choice-sweep",
+        default="",
+        help=(
+            "Comma-separated static choice limits to benchmark as turbo_fast_N. "
+            "When set, only medusa_base plus these static/adaptive tree modes run."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-sweep",
+        default="",
+        help=(
+            "Comma-separated adaptive static tree pairs like 16:24,16:32. "
+            "The first limit is the default tree; the second is used on low-confidence steps."
+        ),
+    )
     parser.add_argument("--adaptive-tree-confidence-threshold", type=float, default=0.60)
     parser.add_argument("--adaptive-tree-check-interval", type=int, default=4)
     parser.add_argument("--adaptive-tree-accept-threshold", type=float, default=0.0)
@@ -487,6 +684,13 @@ def main():
     parser.add_argument("--kv-qjl-medusa-pool-fraction", type=float, default=0.80)
     parser.add_argument("--kv-qjl-medusa-anchor-keep", type=int, default=2)
     parser.add_argument("--kv-qjl-auto-disable-after", type=int, default=2)
+    parser.add_argument("--load-in-8bit", action="store_true")
+    parser.add_argument("--load-in-4bit", action="store_true")
+    parser.add_argument(
+        "--device-map",
+        default="",
+        help="Optional transformers device_map. Use 'auto' for quantized Kaggle runs.",
+    )
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--stream", action="store_true")
     parser.add_argument("--no-stats", dest="collect_stats", action="store_false")
@@ -499,7 +703,32 @@ def main():
 
     torch.set_grad_enabled(False)
     torch.backends.cuda.matmul.allow_tf32 = True
-    model = MedusaModel.from_pretrained(args.model_dir, torch_dtype=torch.float16).to("cuda").eval()
+    load_kwargs = {"torch_dtype": torch.float16}
+    if args.load_in_8bit and args.load_in_4bit:
+        raise SystemExit("Choose only one of --load-in-8bit or --load-in-4bit.")
+    if args.load_in_8bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_skip_modules=["medusa_head"],
+        )
+    if args.load_in_4bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_quant_type="nf4",
+        )
+    if args.device_map or args.load_in_8bit or args.load_in_4bit:
+        load_kwargs["device_map"] = args.device_map or "auto"
+        load_kwargs["low_cpu_mem_usage"] = True
+
+    model = MedusaModel.from_pretrained(args.model_dir, **load_kwargs)
+    if not (args.device_map or args.load_in_8bit or args.load_in_4bit):
+        model = model.to("cuda")
+    elif hasattr(model, "medusa_head"):
+        # Keep custom Medusa heads as regular fp16 CUDA modules. Quantizing them
+        # with bitsandbytes can produce device-map mismatches on Colab/T4.
+        model.medusa_head.to(device="cuda", dtype=torch.float16)
+    model = model.eval()
     raw_choices = model.get_medusa_choice(model.base_model_name_or_path)
     max_choice_depth = int(args.choice_max_depth) if int(args.choice_max_depth) > 0 else int(getattr(model, "medusa", 1))
     medusa_choices = [
@@ -592,6 +821,7 @@ def main():
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+    print_mode_summary(rows)
     print("wrote", args.out_csv)
 
 

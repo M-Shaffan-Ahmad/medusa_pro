@@ -1,0 +1,21 @@
+Prompt_ID,Category,Mode,Tokens,Compute_TTFT_Sec,Memory_Decode_Sec,TPOT_ms,Overall_TPS,Exact_Match
+1,HPC/C++ (Hard),Baseline,201,0.242,2.98,14.9,62.38,N/A
+2,Python (Easy),Baseline,201,0.016,2.82,14.12,70.8,N/A
+3,Sci-Fi (Medium),Baseline,201,0.03,2.9,14.49,68.63,N/A
+4,History (Easy),Baseline,201,0.016,2.84,14.22,70.27,N/A
+5,Math/Logic (Hard),Baseline,201,0.017,2.85,14.26,70.05,N/A
+6,Cooking/Recipe (Easy),Baseline,201,0.029,2.87,14.33,69.46,N/A
+7,Biology (Medium),Baseline,201,0.016,2.92,14.59,68.49,N/A
+8,Physics (Medium),Baseline,201,0.016,2.9,14.49,69.0,N/A
+9,Economics (Medium),Baseline,201,0.015,2.88,14.41,69.38,N/A
+10,Philosophy (Hard),Baseline,201,0.016,2.85,14.25,70.14,N/A
+1,HPC/C++ (Hard),Medusa,474,0.057,4.4,9.31,106.26,True
+2,Python (Easy),Medusa,241,0.038,2.11,8.78,112.37,True
+3,Sci-Fi (Medium),Medusa,424,0.038,4.35,10.28,96.64,False
+4,History (Easy),Medusa,413,0.037,4.32,10.48,94.84,False
+5,Math/Logic (Hard),Medusa,475,0.038,4.39,9.27,107.17,False
+6,Cooking/Recipe (Easy),Medusa,359,0.037,4.3,12.02,82.69,True
+7,Biology (Medium),Medusa,403,0.037,4.33,10.76,92.34,True
+8,Physics (Medium),Medusa,270,0.038,2.48,9.2,107.42,True
+9,Economics (Medium),Medusa,438,0.038,4.24,9.7,102.42,True
+10,Philosophy (Hard),Medusa,462,0.038,4.41,9.56,103.97,True

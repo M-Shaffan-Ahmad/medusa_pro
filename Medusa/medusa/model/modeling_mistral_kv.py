@@ -20,10 +20,13 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_available,
     logging,
     replace_return_docstrings,
 )
+try:
+    from transformers.utils import is_flash_attn_available
+except ImportError:  # transformers renamed this helper in newer releases
+    from transformers.utils import is_flash_attn_2_available as is_flash_attn_available
 from transformers.models.mistral.configuration_mistral import MistralConfig
 
 from .kv_cache import turbo_vq_attention_with_qjl_residual
@@ -221,10 +224,10 @@ class MistralAttention(nn.Module):
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = config.num_key_value_heads
+        self.num_key_value_heads = getattr(config, "num_key_value_heads", self.num_heads)
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
-        self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
+        self.max_position_embeddings = getattr(config, "max_position_embeddings", 2048)
+        self.rope_theta = getattr(config, "rope_theta", 10000.0)
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
