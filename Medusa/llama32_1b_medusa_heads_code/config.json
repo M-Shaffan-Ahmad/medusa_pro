@@ -1,5 +1,5 @@
 {
-  "base_model_name_or_path": "/home/shaffan/Desktop/Uni/PDC/Project/artifacts/model_outputs/models/Llama-3.2-1B-Instruct",
+  "base_model_name_or_path": "/content/medusa_pro/Medusa/Llama-3.2-1B-Instruct",
   "medusa_head_uses_base_lm_head": true,
   "medusa_num_heads": 4,
   "medusa_num_layers": 1,
