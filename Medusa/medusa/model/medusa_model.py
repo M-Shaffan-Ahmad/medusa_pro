@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import csv
+import json
 from .modeling_llama_kv import LlamaForCausalLM as KVLlamaForCausalLM
 from .modeling_mistral_kv import MistralForCausalLM as KVMistralForCausalLM
 # import transformers
@@ -38,6 +40,7 @@ class MedusaConfig(PretrainedConfig):
         medusa_num_heads=5,
         medusa_num_layers=1,
         version=None,
+        draft_head_type="medusa",
         base_model_name_or_path="lmsys/vicuna-7b-v1.3",
         **kwargs,
     ):
@@ -45,6 +48,7 @@ class MedusaConfig(PretrainedConfig):
         self.medusa_num_heads = medusa_num_heads
         self.medusa_num_layers = medusa_num_layers
         self.version = version if version is not None else getattr(self, "version", None)
+        self.draft_head_type = draft_head_type
         self.base_model_name_or_path = base_model_name_or_path
 
 class ResBlock(nn.Module):
@@ -95,6 +99,15 @@ def _make_medusa_head(hidden_size, vocab_size, num_layers, uses_base_lm_head):
     return nn.Sequential(*layers)
 
 
+def _normalize_draft_head_type(value):
+    value = "medusa" if value is None else str(value).lower().strip()
+    if value in {"", "default", "config"}:
+        value = "medusa"
+    if value not in {"medusa", "hydra"}:
+        raise ValueError("draft_head_type must be 'medusa' or 'hydra'.")
+    return value
+
+
 def _load_medusa_head_state_dict(pretrained_model_name_or_path):
     local_safetensors = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.safetensors")
     local_pt = os.path.join(pretrained_model_name_or_path, "medusa_lm_head.pt")
@@ -139,12 +152,31 @@ def _medusa_head_module_state_dict(state_dict):
             for key, value in state_dict.items()
             if str(key).startswith("medusa_head.")
         }
-    return state_dict
+    return {
+        str(key): value
+        for key, value in state_dict.items()
+        if not str(key).startswith("hydra_")
+    }
 
 
 def _load_medusa_head_into_model(model, state_dict):
     module_state_dict = _medusa_head_module_state_dict(state_dict)
     incompatible = model.medusa_head.load_state_dict(module_state_dict, strict=False)
+    if "hydra_prefix_scale" in state_dict and hasattr(model, "hydra_prefix_scale"):
+        with torch.no_grad():
+            model.hydra_prefix_scale.copy_(
+                state_dict["hydra_prefix_scale"].to(
+                    device=model.hydra_prefix_scale.device,
+                    dtype=model.hydra_prefix_scale.dtype,
+                )
+            )
+    elif getattr(model, "draft_head_type", "medusa") == "hydra":
+        model.draft_head_type = "medusa"
+        warnings.warn(
+            "Hydra draft mode requested but no hydra_prefix_scale was found in "
+            "the head sidecar; falling back to standard Medusa heads.",
+            RuntimeWarning,
+        )
     if incompatible.missing_keys or incompatible.unexpected_keys:
         warnings.warn(
             "Medusa head sidecar did not load cleanly: "
@@ -154,17 +186,40 @@ def _load_medusa_head_into_model(model, state_dict):
     return incompatible
 
 
-def _compute_medusa_logits(model, hidden_states):
+def _compute_one_draft_head(model, head_idx, hidden_states):
     if getattr(model, "medusa_head_uses_base_lm_head", False):
-        medusa_hidden = torch.stack(
-            [model.medusa_head[i](hidden_states) for i in range(model.medusa)],
+        return model.base_model.lm_head(model.medusa_head[head_idx](hidden_states))
+    return model.medusa_head[head_idx](hidden_states)
+
+
+def _compute_medusa_logits(model, hidden_states, draft_head_type=None):
+    draft_head_type = _normalize_draft_head_type(
+        draft_head_type
+        if draft_head_type is not None
+        else getattr(model, "_active_draft_head_type", getattr(model, "draft_head_type", "medusa"))
+    )
+    if draft_head_type == "medusa":
+        return torch.stack(
+            [_compute_one_draft_head(model, i, hidden_states) for i in range(model.medusa)],
             dim=0,
         )
-        return model.base_model.lm_head(medusa_hidden)
-    return torch.stack(
-        [model.medusa_head[i](hidden_states) for i in range(model.medusa)],
-        dim=0,
-    )
+
+    prev_embed = None
+    logits = []
+    embed_tokens = model.base_model.get_input_embeddings()
+    scale = getattr(model, "hydra_prefix_scale", None)
+    for i in range(model.medusa):
+        conditioned = hidden_states
+        if prev_embed is not None and scale is not None:
+            prefix_scale = scale[i].to(device=hidden_states.device, dtype=hidden_states.dtype)
+            conditioned = conditioned + prev_embed.to(hidden_states.dtype) * prefix_scale.view(1, 1, -1)
+        head_logits = _compute_one_draft_head(model, i, conditioned)
+        logits.append(head_logits)
+        # Hydra scaffolding: later heads can condition on the earlier speculative
+        # top-1 token. The zero-initialized scale keeps legacy Medusa behavior.
+        prev_token = torch.argmax(head_logits.detach(), dim=-1)
+        prev_embed = embed_tokens(prev_token)
+    return torch.stack(logits, dim=0)
 
 
 def _resolve_layer_index(model, layer_idx):
@@ -237,6 +292,219 @@ def _estimate_packed_kv_qjl_scores(
     return path_scores
 
 
+def _safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value, default=0):
+    try:
+        if value is None or value == "":
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_tree_calibration(path):
+    if not path:
+        return []
+    path = os.path.expanduser(str(path))
+    if not os.path.exists(path):
+        warnings.warn(
+            f"tree_calibration_path does not exist: {path}; using fixed tree policy.",
+            RuntimeWarning,
+        )
+        return []
+    try:
+        if path.endswith(".json"):
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if isinstance(payload, dict):
+                payload = payload.get("rows") or payload.get("calibration") or []
+            rows = list(payload) if isinstance(payload, list) else []
+        else:
+            with open(path, "r", newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+    except Exception as exc:
+        warnings.warn(
+            f"Could not read tree calibration file {path}: {exc}; using fixed tree policy.",
+            RuntimeWarning,
+        )
+        return []
+
+    normalized = []
+    for row in rows:
+        prefix = _safe_float(row.get("prefix_match_vs_base"), 1.0)
+        if prefix < 0.999:
+            continue
+        choice_limit = _safe_int(row.get("choice_limit", row.get("medusa_choice_limit")), 0)
+        max_depth = _safe_int(row.get("max_depth", row.get("choice_max_depth")), 0)
+        accepted = _safe_float(row.get("accepted_tokens_per_step"), 0.0)
+        nodes = _safe_float(row.get("verified_nodes_per_step"), 0.0)
+        tps = _safe_float(row.get("tps"), 0.0)
+        if tps <= 0.0:
+            continue
+        normalized.append(
+            {
+                "choice_limit": choice_limit,
+                "max_depth": max_depth,
+                "accepted_tokens_per_step": accepted,
+                "verified_nodes_per_step": nodes,
+                "tps": tps,
+            }
+        )
+    return normalized
+
+
+def _select_calibrated_tree_policy(rows, node_budget=0):
+    candidates = [row for row in rows if int(row["choice_limit"]) > 0]
+    if not candidates:
+        return None
+    node_budget = int(node_budget)
+    budgeted = [
+        row
+        for row in candidates
+        if node_budget <= 0 or row["verified_nodes_per_step"] <= float(node_budget)
+    ]
+    pool = budgeted or candidates
+    primary = max(
+        pool,
+        key=lambda row: (
+            row["tps"],
+            row["accepted_tokens_per_step"],
+            -row["verified_nodes_per_step"],
+        ),
+    )
+    larger = [
+        row for row in candidates if int(row["choice_limit"]) > int(primary["choice_limit"])
+    ]
+    balanced = None
+    if larger:
+        balanced = max(
+            larger,
+            key=lambda row: (
+                row["accepted_tokens_per_step"],
+                row["tps"],
+                int(row["choice_limit"]),
+            ),
+        )
+    accept_threshold = max(0.0, float(primary["accepted_tokens_per_step"]) * 0.85)
+    return {
+        "primary_choice_limit": int(primary["choice_limit"]),
+        "balanced_choice_limit": int(balanced["choice_limit"]) if balanced else 0,
+        "max_depth": int(primary["max_depth"]),
+        "accept_threshold": accept_threshold,
+    }
+
+
+_CONTEXT_WINDOW_FIELDS = (
+    "max_position_embeddings",
+    "n_positions",
+    "seq_length",
+    "max_seq_len",
+    "max_sequence_length",
+)
+_CONTEXT_WINDOW_SENTINEL = 1_000_000_000
+
+
+def _coerce_context_length(value):
+    try:
+        if value is None:
+            return 0
+        if torch.is_tensor(value):
+            value = value.item()
+        value = int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    if value <= 0 or value >= _CONTEXT_WINDOW_SENTINEL:
+        return 0
+    return value
+
+
+def infer_model_context_window(config, tokenizer=None, default=0):
+    """
+    Best-effort context-window inference for generation/benchmark planning.
+
+    Tokenizers sometimes expose a huge sentinel for "unknown"; those values are
+    ignored so Llama 3.x configs with real `max_position_embeddings` win.
+    """
+    candidates = []
+    for field in _CONTEXT_WINDOW_FIELDS:
+        length = _coerce_context_length(getattr(config, field, None))
+        if length > 0:
+            candidates.append(length)
+
+    rope_scaling = getattr(config, "rope_scaling", None)
+    if not candidates and isinstance(rope_scaling, dict):
+        factor = _safe_float(rope_scaling.get("factor"), 0.0)
+        original = _coerce_context_length(
+            rope_scaling.get("original_max_position_embeddings")
+            or rope_scaling.get("original_max_position")
+        )
+        if factor > 1.0 and original > 0:
+            candidates.append(int(original * factor))
+
+    if tokenizer is not None:
+        length = _coerce_context_length(getattr(tokenizer, "model_max_length", None))
+        if length > 0:
+            candidates.append(length)
+
+    fallback = _coerce_context_length(default)
+    if fallback > 0:
+        candidates.append(fallback)
+    return max(candidates) if candidates else 0
+
+
+def resolve_turbo_kv_cache_plan(
+    config,
+    tokenizer=None,
+    input_length=0,
+    max_steps=512,
+    max_path_depth=1,
+    turbo_kv_max_length=2048,
+    turbo_kv_use_model_context=False,
+    packed_kv_qjl_requested=False,
+    turbo_kv_qjl_min_kv_len=16384,
+):
+    """
+    Resolve cache preallocation and packed KV-QJL availability.
+
+    This is intentionally pure so Llama 3.2 long-context setup can be tested
+    without loading model weights or trained Medusa heads.
+    """
+    input_length = max(0, int(input_length))
+    max_steps = max(0, int(max_steps))
+    max_path_depth = max(1, int(max_path_depth))
+    worst_case_new_tokens = int(max_steps * (max_path_depth + 1))
+    required_kv_len = int(input_length + worst_case_new_tokens + 8)
+    requested_kv_len = max(0, int(turbo_kv_max_length or 0))
+    model_context_window = infer_model_context_window(config, tokenizer=tokenizer)
+
+    effective_kv_max_length = max(requested_kv_len, required_kv_len)
+    if turbo_kv_use_model_context and model_context_window > 0:
+        effective_kv_max_length = max(effective_kv_max_length, model_context_window)
+
+    effective_kv_qjl_min_len = max(0, int(turbo_kv_qjl_min_kv_len))
+    use_packed_kv_qjl = bool(
+        packed_kv_qjl_requested
+        and effective_kv_max_length >= effective_kv_qjl_min_len
+    )
+    return {
+        "model_context_window": int(model_context_window),
+        "required_kv_len": int(required_kv_len),
+        "requested_kv_len": int(requested_kv_len),
+        "effective_kv_max_length": int(effective_kv_max_length),
+        "effective_kv_qjl_min_len": int(effective_kv_qjl_min_len),
+        "use_packed_kv_qjl": bool(use_packed_kv_qjl),
+        "worst_case_new_tokens": int(worst_case_new_tokens),
+    }
+
+
 class MedusaModelABC(nn.Module):
     """The Medusa Language Model Head.
 
@@ -271,6 +539,9 @@ class MedusaModelABC(nn.Module):
         self.medusa = medusa_num_heads
         self.medusa_num_layers = medusa_num_layers
         self.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(config)
+        self.draft_head_type = _normalize_draft_head_type(
+            getattr(config, "draft_head_type", "medusa")
+        )
         self.base_model_name_or_path = base_model_name_or_path
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
         # Create a list of Medusa heads
@@ -284,6 +555,9 @@ class MedusaModelABC(nn.Module):
                 )
                 for _ in range(medusa_num_heads)
             ]
+        )
+        self.hydra_prefix_scale = nn.Parameter(
+            torch.zeros(medusa_num_heads, self.hidden_size)
         )
     # Add a link named base_model to self
     @property
@@ -339,6 +613,7 @@ class MedusaModelABC(nn.Module):
             base_model_config.medusa_num_layers = config.medusa_num_layers
             base_model_config.version = getattr(config, "version", None)
             base_model_config.medusa_head_uses_base_lm_head = _medusa_uses_base_lm_head(config)
+            base_model_config.draft_head_type = getattr(config, "draft_head_type", "medusa")
             model = super().from_pretrained(
                 config.base_model_name_or_path,
                 *args,
@@ -370,6 +645,7 @@ class MedusaModelABC(nn.Module):
         return_medusa_logits=True,
         return_outputs=False,
         last_token_logits=False,
+        draft_head_type=None,
         **kwargs,
     ):
         """Forward pass of the MedusaModel.
@@ -408,7 +684,11 @@ class MedusaModelABC(nn.Module):
             if output_orig:
                 orig = self.base_model.lm_head(logits_hidden_states)
         hidden_states = logits_hidden_states if last_token_logits else outputs[0]
-        medusa_logits = _compute_medusa_logits(self, hidden_states) if return_medusa_logits else None
+        medusa_logits = (
+            _compute_medusa_logits(self, hidden_states, draft_head_type=draft_head_type)
+            if return_medusa_logits
+            else None
+        )
         if output_orig:
             return medusa_logits, outputs, orig
         if return_outputs:
@@ -527,6 +807,7 @@ class MedusaModelABC(nn.Module):
         turbo_skip_threshold_high=1.1,
         turbo_skip_threshold_low=-0.1,
         turbo_kv_max_length=2048,
+        turbo_kv_use_model_context=False,
         turbo_kv_quant_mode="polar",
         turbo_radius_bits=8,
         turbo_theta_bits=8,
@@ -538,6 +819,9 @@ class MedusaModelABC(nn.Module):
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
         turbo_qjl_dim=64,
+        draft_head_type=None,
+        tree_policy="fixed",
+        tree_calibration_path=None,
         stream=True,
         collect_stats=False,
     ):
@@ -662,6 +946,10 @@ class MedusaModelABC(nn.Module):
             turbo_skip_threshold_low (float, optional): If pass-1 top prob is below this, skip pass-2 and do greedy one token.
                 Defaults disable skip-gating (high>1, low<0) to preserve acceptance quality.
             turbo_kv_max_length (int, optional): Maximum cache length for KV pre-allocation.
+            turbo_kv_use_model_context (bool, optional): If True, preallocate at least the
+                model/tokenizer advertised context window. This is useful for Llama 3.2
+                long-context runs where packed KV-QJL and TurboVQ should be initialized
+                for the larger cache ahead of time.
             turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for the
                 previous polar-inspired cache, "turbo_vq" for strict random-rotation
                 Lloyd-Max TurboQuant KV, or "hybrid_turbo_vq" for exact hot-window KV
@@ -685,6 +973,16 @@ class MedusaModelABC(nn.Module):
                 direct compressed-KV Triton attention path instead of materializing FP16 K/V.
             turbo_compile_decode (bool, optional): Use torch.compile on tensorized polar decode kernel.
             turbo_qjl_dim (int, optional): Sketch dimension for 1-bit QJL sidecar path scoring.
+            draft_head_type (str, optional): Draft-head family for speculative
+                logits. `None` uses the model config. Supported values are
+                "medusa" and "hydra"; Hydra mode is exact-safe because the
+                base verifier still makes every acceptance decision.
+            tree_policy (str, optional): "fixed" keeps the requested tree.
+                "adaptive_calibrated" reads `tree_calibration_path` and chooses
+                calibrated choice limits, falling back to the fixed full tree
+                when calibration is missing or unusable.
+            tree_calibration_path (str, optional): CSV/JSON calibration file
+                produced by `calibrate_tree_policy.py`.
             stream (bool, optional): If True, yield decoded text after every Medusa step.
                 If False, keep generation non-streaming and yield decoded text only once at the end.
             collect_stats (bool, optional): Attach lightweight pruning/verifier counters to
@@ -697,6 +995,15 @@ class MedusaModelABC(nn.Module):
         assert input_ids.shape[0] == 1, "Only support batch size 1 for now!!"
         # Avoid modifying the input_ids in-place
         input_ids = input_ids.clone()
+        effective_draft_head_type = _normalize_draft_head_type(
+            draft_head_type
+            if draft_head_type is not None
+            else getattr(self, "draft_head_type", "medusa")
+        )
+        self._active_draft_head_type = effective_draft_head_type
+        effective_tree_policy = str(tree_policy or "fixed").lower().strip()
+        if effective_tree_policy not in {"fixed", "adaptive_calibrated"}:
+            raise ValueError("tree_policy must be 'fixed' or 'adaptive_calibrated'.")
         explicit_medusa_choices = medusa_choices is not None
 
         if turbo_auto:
@@ -718,7 +1025,37 @@ class MedusaModelABC(nn.Module):
             ):
                 medusa_choice_limit = 24
         if turbo_fused_lm_head_argmax is None:
-            turbo_fused_lm_head_argmax = False
+            turbo_fused_lm_head_argmax = bool(
+                temperature == 0 and globals().get("lm_head_argmax_triton", None) is not None
+            )
+
+        calibrated_tree_policy = None
+        if (
+            effective_tree_policy == "adaptive_calibrated"
+            and not explicit_medusa_choices
+            and int(medusa_choice_limit) <= 0
+        ):
+            calibrated_rows = _read_tree_calibration(tree_calibration_path)
+            calibrated_tree_policy = _select_calibrated_tree_policy(
+                calibrated_rows,
+                node_budget=turbo_prune_node_budget,
+            )
+            if calibrated_tree_policy is not None:
+                medusa_choice_limit = int(calibrated_tree_policy["primary_choice_limit"])
+                if int(medusa_choice_max_depth) <= 0 and int(calibrated_tree_policy["max_depth"]) > 0:
+                    medusa_choice_max_depth = int(calibrated_tree_policy["max_depth"])
+                turbo_quant = True
+                turbo_kv_compression = False
+                turbo_force_full_tree_fast_verifier = True
+                turbo_prune_use_kv_qjl = False
+                turbo_adaptive_tree = True
+                turbo_adaptive_tree_balanced_limit = int(
+                    calibrated_tree_policy["balanced_choice_limit"]
+                )
+                if float(turbo_adaptive_tree_accept_threshold) <= 0.0:
+                    turbo_adaptive_tree_accept_threshold = float(
+                        calibrated_tree_policy["accept_threshold"]
+                    )
 
         # Cache medusa buffers (the fixed patterns for tree attention)
         medusa_choices = self.resolve_medusa_choices(
@@ -774,9 +1111,6 @@ class MedusaModelABC(nn.Module):
                 max_path_depth,
                 max((len(path) for path in adaptive_medusa_choices), default=1),
             )
-        worst_case_new_tokens = int(max_steps * (max_path_depth + 1))
-        required_kv_len = int(input_ids.shape[1] + worst_case_new_tokens + 8)
-        effective_kv_max_length = max(int(turbo_kv_max_length), required_kv_len)
         use_compressed_kv = bool(turbo_quant and turbo_kv_compression)
         requested_kv_quant_mode = str(turbo_kv_quant_mode).lower()
         requested_cache_mode = requested_kv_quant_mode if use_compressed_kv else "fp16"
@@ -791,11 +1125,21 @@ class MedusaModelABC(nn.Module):
             and not turbo_force_full_tree_fast_verifier
             and not use_compressed_kv
         )
-        effective_kv_qjl_min_len = max(0, int(turbo_kv_qjl_min_kv_len))
-        use_packed_kv_qjl = bool(
-            packed_kv_qjl_requested
-            and effective_kv_max_length >= effective_kv_qjl_min_len
+        kv_cache_plan = resolve_turbo_kv_cache_plan(
+            self.config,
+            tokenizer=getattr(self, "tokenizer", None),
+            input_length=int(input_ids.shape[1]),
+            max_steps=max_steps,
+            max_path_depth=max_path_depth,
+            turbo_kv_max_length=turbo_kv_max_length,
+            turbo_kv_use_model_context=turbo_kv_use_model_context,
+            packed_kv_qjl_requested=packed_kv_qjl_requested,
+            turbo_kv_qjl_min_kv_len=turbo_kv_qjl_min_kv_len,
         )
+        required_kv_len = int(kv_cache_plan["required_kv_len"])
+        effective_kv_max_length = int(kv_cache_plan["effective_kv_max_length"])
+        effective_kv_qjl_min_len = int(kv_cache_plan["effective_kv_qjl_min_len"])
+        use_packed_kv_qjl = bool(kv_cache_plan["use_packed_kv_qjl"])
         effective_kv_qjl_dim = int(turbo_kv_qjl_dim) if use_packed_kv_qjl else 0
         cache_reusable = (
             hasattr(self, "past_key_values")
@@ -948,6 +1292,14 @@ class MedusaModelABC(nn.Module):
                 "generated_tokens": 0,
                 "medusa_choice_count": int(len(medusa_choices)),
                 "medusa_choice_max_depth": int(max_path_depth),
+                "draft_head_type": effective_draft_head_type,
+                "tree_policy": effective_tree_policy,
+                "model_context_window": int(kv_cache_plan["model_context_window"]),
+                "kv_cache_required_len": int(required_kv_len),
+                "kv_cache_max_length": int(effective_kv_max_length),
+                "kv_cache_use_model_context": int(bool(turbo_kv_use_model_context)),
+                "packed_kv_qjl_enabled": int(bool(use_packed_kv_qjl)),
+                "packed_kv_qjl_min_len": int(effective_kv_qjl_min_len),
                 "turbo_auto_steps": 0,
                 "adaptive_tree_steps": 0,
                 "adaptive_tree_balanced_steps": 0,
@@ -1553,7 +1905,11 @@ class MedusaModelABC(nn.Module):
                     if medusa_logits is None or need_turbo_query_state:
                         accepted_hidden = tree_hidden.index_select(0, node_idx)
                     if medusa_logits is None:
-                        medusa_logits = _compute_medusa_logits(self, accepted_hidden.unsqueeze(0))
+                        medusa_logits = _compute_medusa_logits(
+                            self,
+                            accepted_hidden.unsqueeze(0),
+                            draft_head_type=effective_draft_head_type,
+                        )
                     if need_turbo_query_state:
                         query_state = accepted_hidden.detach()
                     accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
@@ -1585,54 +1941,109 @@ class MedusaModelABC(nn.Module):
             else:
                 # Use tree attention to verify the candidates and get predictions
                 record_verifier("full", full_tree_node_count, full_candidate_path_count)
-                medusa_logits, logits, outputs, tree_hidden = tree_decoding(
-                    self,
-                    tree_candidates,
-                    past_key_values,
-                    medusa_buffers["medusa_position_ids"],
-                    input_ids,
-                    medusa_buffers["retrieve_indices"],
-                    return_hidden=True,
-                )
+                if temperature == 0:
+                    medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                        self,
+                        tree_candidates,
+                        past_key_values,
+                        medusa_buffers["medusa_position_ids"],
+                        input_ids,
+                        medusa_buffers["retrieve_indices"],
+                        medusa_attn_mask=medusa_buffers["medusa_attn_mask"],
+                        return_hidden=True,
+                        gather_paths=False,
+                        compute_medusa_logits=False,
+                        compute_orig_logits=not use_fused_lm_head_argmax,
+                        fast_attention_mask=True,
+                    )
+                    best_candidate, accept_length = evaluate_greedy_tree(
+                        logits,
+                        tree_hidden,
+                        candidates,
+                        medusa_buffers["retrieve_indices"],
+                        full_path_lengths,
+                    )
+                    if target_new_tokens > 0:
+                        max_accept_len = max(0, target_new_tokens - new_token) - 1
+                        if torch.is_tensor(accept_length):
+                            accept_length = accept_length.clamp_max(max_accept_len)
+                        else:
+                            accept_length = min(int(accept_length), max_accept_len)
+                    input_ids, logits, medusa_logits, new_token = update_inference_inputs_from_tree(
+                        input_ids,
+                        candidates,
+                        best_candidate,
+                        accept_length,
+                        medusa_buffers["retrieve_indices"],
+                        outputs,
+                        logits,
+                        medusa_logits,
+                        new_token,
+                        past_key_values_data,
+                        current_length_data,
+                        past_key_values=past_key_values,
+                        input_ids_buffer=input_ids_buffer,
+                        lm_head=fused_lm_head if logits is None else None,
+                        tree_hidden=tree_hidden if logits is None else None,
+                    )
+                    accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
+                    node_idx = medusa_buffers["retrieve_indices"][best_candidate, accept_idx].reshape(1)
+                    accepted_hidden = tree_hidden.index_select(0, node_idx)
+                    medusa_logits = _compute_medusa_logits(
+                        self,
+                        accepted_hidden.unsqueeze(0),
+                        draft_head_type=effective_draft_head_type,
+                    )
+                    query_state = accepted_hidden.detach()
+                else:
+                    medusa_logits, logits, outputs, tree_hidden = tree_decoding(
+                        self,
+                        tree_candidates,
+                        past_key_values,
+                        medusa_buffers["medusa_position_ids"],
+                        input_ids,
+                        medusa_buffers["retrieve_indices"],
+                        return_hidden=True,
+                    )
 
-                # Evaluate the posterior of the candidates to select the accepted candidate prefix
-                best_candidate, accept_length = evaluate_posterior(
-                    logits,
-                    candidates,
-                    temperature,
-                    posterior_threshold,
-                    posterior_alpha,
-                    top_p=top_p,
-                    sampling=sampling,
-                    fast=fast,
-                    path_lengths=full_path_lengths,
-                )
+                    # Evaluate the posterior of the candidates to select the accepted candidate prefix
+                    best_candidate, accept_length = evaluate_posterior(
+                        logits,
+                        candidates,
+                        temperature,
+                        posterior_threshold,
+                        posterior_alpha,
+                        top_p=top_p,
+                        sampling=sampling,
+                        fast=fast,
+                        path_lengths=full_path_lengths,
+                    )
 
-                # Update the input_ids and logits
-                if target_new_tokens > 0:
-                    max_accept_len = max(0, target_new_tokens - new_token) - 1
-                    if torch.is_tensor(accept_length):
-                        accept_length = accept_length.clamp_max(max_accept_len)
-                    else:
-                        accept_length = min(int(accept_length), max_accept_len)
-                input_ids, logits, medusa_logits, new_token = update_inference_inputs(
-                    input_ids,
-                    candidates,
-                    best_candidate,
-                    accept_length,
-                    medusa_buffers["retrieve_indices"],
-                    outputs,
-                    logits,
-                    medusa_logits,
-                    new_token,
-                    past_key_values_data,
-                    current_length_data,
-                    past_key_values=past_key_values,
-                    input_ids_buffer=input_ids_buffer,
-                )
-                best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
-                accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
-                query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
+                    # Update the input_ids and logits
+                    if target_new_tokens > 0:
+                        max_accept_len = max(0, target_new_tokens - new_token) - 1
+                        if torch.is_tensor(accept_length):
+                            accept_length = accept_length.clamp_max(max_accept_len)
+                        else:
+                            accept_length = min(int(accept_length), max_accept_len)
+                    input_ids, logits, medusa_logits, new_token = update_inference_inputs(
+                        input_ids,
+                        candidates,
+                        best_candidate,
+                        accept_length,
+                        medusa_buffers["retrieve_indices"],
+                        outputs,
+                        logits,
+                        medusa_logits,
+                        new_token,
+                        past_key_values_data,
+                        current_length_data,
+                        past_key_values=past_key_values,
+                        input_ids_buffer=input_ids_buffer,
+                    )
+                    best_idx = int(best_candidate.item()) if torch.is_tensor(best_candidate) else int(best_candidate)
+                    accept_idx = int(accept_length.item()) if torch.is_tensor(accept_length) else int(accept_length)
+                    query_state = tree_hidden[best_idx, accept_idx].unsqueeze(0).detach()
 
             if use_adaptive_tree:
                 record_adaptive_acceptance(accept_idx + 1)

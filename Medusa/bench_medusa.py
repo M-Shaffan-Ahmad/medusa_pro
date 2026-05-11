@@ -3,6 +3,13 @@ import torch
 from transformers import AutoTokenizer
 from medusa.model.medusa_model import MedusaModel
 
+TARGET_NEW_TOKENS = 200
+
+
+def sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
 print("Loading Medusa Accelerated Model...")
 tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
@@ -13,23 +20,27 @@ model = MedusaModel.from_pretrained(
 
 prompt = "<|user|>\nWrite a C++ program using MPI and OpenMP for parallel matrix multiplication.\n<|assistant|>\n"
 inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-prompt_length = inputs.input_ids.shape[1]
 
 print("Generating with Medusa Tree Decoding (Parallel)...")
-start_time = time.time()
+sync()
+start_time = time.perf_counter()
 
-with torch.no_grad():
+with torch.inference_mode():
     output_stream = model.medusa_generate(
-        inputs.input_ids, 
-        temperature=0.0, 
-        max_steps=200
+        inputs.input_ids,
+        temperature=0.0,
+        max_steps=200,
+        max_new_tokens=TARGET_NEW_TOKENS,
+        stream=False,
+        collect_stats=True,
     )
     
     # Exhaust the stream to get the final dictionary state
     for current_output in output_stream:
         final_data = current_output
-        
-end_time = time.time()
+
+sync()
+end_time = time.perf_counter()
 
 # Extract the final text from the dictionary
 final_text = final_data["text"]
@@ -40,15 +51,10 @@ print(" MEDUSA OUTPUT TEXT")
 print("-"*30)
 print(final_text)
 
-# Re-tokenize the text so we can accurately count the tokens
-total_tokens = len(tokenizer.encode(final_text))
-generated_tokens = total_tokens - prompt_length
-
-
-
-# Ensure we don't divide by zero if it stops early
+generated_tokens = int(final_data.get("stats", {}).get("generated_tokens", 0))
 if generated_tokens <= 0:
-    generated_tokens = 1
+    generated_tokens = len(tokenizer(final_text, add_special_tokens=False).input_ids)
+generated_tokens = max(1, generated_tokens)
 
 time_taken = end_time - start_time
 tps = generated_tokens / time_taken

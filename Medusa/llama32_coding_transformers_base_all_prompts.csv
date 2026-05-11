@@ -1,0 +1,47 @@
+category,mode,tokens,prompt_tokens,total_s,tps,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,text
+python_grouping,base_transformers,64,31,0.8669926659999874,73.81838683281426,2370.6748046875,2384.0,131072,0.00072479248046875,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str]): A list of strings to be grouped.
+
+    Returns:
+    Dict[str,"
+cuda_kernel,base_transformers,64,28,0.6891519939999853,92.86775712354881,2370.58203125,2384.0,131072,0.000701904296875,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_vectors(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        c[idx] = a[idx"
+debugging,base_transformers,64,32,0.6890773629997966,92.87781523018758,2370.70703125,2384.0,131072,0.000732421875,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function is defined, not each time it's called.
+
+## Step 2: Ident"
+systems_code,base_transformers,64,32,0.6888092260001031,92.91397034799651,2370.70703125,2384.0,131072,0.000732421875,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some work
+void worker(int id, std::vector<int>& data) {
+    std::"
+long_context_4096t,base_transformers,64,4050,1.612919595999756,39.679597271139905,2750.88134765625,2864.0,131072,0.0313873291015625,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+    def __init__(self):
+        self.start_time = None
+        self.end"

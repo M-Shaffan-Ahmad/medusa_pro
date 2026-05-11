@@ -1,3 +1,5 @@
+import os
+
 import torch
 
 try:
@@ -13,6 +15,11 @@ except Exception:  # pragma: no cover - optional CUDA fast path
 
 def _is_cuda_tensor(tensor):
     return isinstance(tensor, torch.Tensor) and tensor.is_cuda
+
+
+def _debug_triton_failure(name, exc):
+    if os.environ.get("MEDUSA_TRITON_DEBUG"):
+        print(f"{name} failed: {type(exc).__name__}: {exc}")
 
 
 if TRITON_AVAILABLE:
@@ -87,12 +94,14 @@ if TRITON_AVAILABLE:
             mask=w_offsets < words,
             other=0,
         )
+        valid = (k_offsets[:, None] < kv_len) & (w_offsets[None, :] < words)
         k = tl.load(
             key_bits + (head * max_length + k_offsets[:, None]) * words + w_offsets[None, :],
-            mask=(k_offsets[:, None] < kv_len) & (w_offsets[None, :] < words),
+            mask=valid,
             other=0,
         )
         matches = _popcount_u32(~(q[None, :] ^ k))
+        matches = tl.where(valid, matches, 0)
         score_by_word = tl.sum(matches, axis=0)
         score = tl.sum(score_by_word, axis=0)
         tl.store(partial + (node * num_heads + head) * num_blocks + block, score)
@@ -1663,7 +1672,8 @@ def packed_kv_qjl_node_scores_triton(query_bits, key_bits, kv_len, block_k=1024)
             BLOCK_W=block_w,
             num_warps=4,
         )
-    except Exception:
+    except Exception as exc:
+        _debug_triton_failure("packed_kv_qjl_node_scores_triton", exc)
         return None
     return partial.to(torch.float32).sum(dim=(1, 2))
 
@@ -2611,7 +2621,8 @@ def compressed_kv_attention_turbo_vq_triton(
                 BLOCK_R=block_r,
                 num_warps=4,
             )
-    except Exception:
+    except Exception as exc:
+        _debug_triton_failure("compressed_kv_attention_turbo_vq_triton", exc)
         return None
     return out
 
@@ -2738,6 +2749,7 @@ def hybrid_kv_attention_turbo_vq_triton(
             BLOCK_R=block_r,
             num_warps=4,
         )
-    except Exception:
+    except Exception as exc:
+        _debug_triton_failure("hybrid_kv_attention_turbo_vq_triton", exc)
         return None
     return out

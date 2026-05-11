@@ -1,0 +1,178 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,packed_kv_qjl_sidecar_mb_est,packed_kv_qjl_sidecar_pct_of_fp16_kv,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+python_grouping,medusa_base,48,31,1.2,1.5,64.0,0.879604701000062,0.8795812480002496,54.56996756091304,1.0,1.0,3944.08740234375,3962.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,63,0,1344,32,medusa,0,32,32,48,32768,239,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1344,0,fixed,0,2048,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+python_grouping,turbo_fast_8,48,31,1.2,1.3714285714285714,9.0,0.7647708039999088,0.7647358679996614,62.76390226843142,1.1501546560087654,1.0,3940.9140625,3958.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,8,0,175,35,medusa,0,35,35,48,32768,199,0,8,3,131072,0,0,0,0,16384,0,0,0,0,0,175,0,fixed,0,315,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+python_grouping,turbo_fast_16,48,31,1.2,1.411764705882353,17.0,0.8098109280003882,0.8097768420002467,59.27309491676431,1.086185269408516,1.0,3938.0849609375,3958.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,16,0,408,34,medusa,0,34,34,48,32768,199,0,16,3,131072,0,0,0,0,16384,0,0,0,0,0,408,0,fixed,0,578,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+python_grouping,turbo_fast_24,48,31,1.2,1.411764705882353,25.0,0.851422556000216,0.8513626410003781,56.376237229951684,1.0331000685866711,1.0,3939.04150390625,3960.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,24,0,646,34,medusa,0,34,34,48,32768,199,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,646,0,fixed,0,850,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+python_grouping,turbo_fast_32,48,31,1.2,1.411764705882353,33.0,0.8400766320000912,0.8400539780000145,57.1376445571632,1.0470529324281532,1.0,3940.07568359375,3960.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,32,0,816,34,medusa,0,34,34,48,32768,199,0,32,3,131072,0,0,0,0,16384,0,0,0,0,0,816,0,fixed,0,1122,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+cuda_kernel,medusa_base,48,28,1.2,1.263157894736842,64.0,1.0610685829997237,1.0610453979998056,45.23741515774621,1.0,1.0,3944.0869140625,3962.0,131072,0.000579833984375,2.375,1.3916015625,1.7066666666666668,0.00927734375,0.00390625,0,0,63,0,1596,38,medusa,0,38,38,48,32768,236,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1596,0,fixed,0,2432,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_vectors(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x"
+cuda_kernel,turbo_fast_8,43,28,1.075,1.075,9.0,0.8894885649997377,0.8894609959997979,48.34238650388123,1.0686372405520463,0.5277777777777778,3940.90234375,3958.0,131072,0.00054168701171875,2.21875,1.300048828125,1.7066666666666668,0.0086669921875,0.00390625,0,0,8,0,200,40,medusa,0,40,40,43,32768,196,0,8,3,131072,0,0,0,0,16384,0,0,0,0,0,200,0,fixed,0,360,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_kernel(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x *"
+cuda_kernel,turbo_fast_16,46,28,1.15,1.15,17.0,0.9741444139999658,0.9741127820002475,47.22092467904006,1.0438466591067859,0.4840764331210191,3938.04541015625,3958.0,131072,0.0005645751953125,2.3125,1.35498046875,1.7066666666666668,0.009033203125,0.00390625,0,0,16,0,480,40,medusa,0,40,40,46,32768,196,0,16,3,131072,0,0,0,0,16384,0,0,0,0,0,480,0,fixed,0,680,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_kernel(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x +"
+cuda_kernel,turbo_fast_24,48,28,1.2,1.263157894736842,25.0,0.9529614060002132,0.9529321129998607,50.369301104717835,1.1134433947889453,0.44970414201183434,3939.041015625,3960.0,131072,0.000579833984375,2.375,1.3916015625,1.7066666666666668,0.00927734375,0.00390625,0,0,24,0,722,38,medusa,0,38,38,48,32768,196,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,722,0,fixed,0,950,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_kernel(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x"
+cuda_kernel,turbo_fast_32,48,28,1.2,1.2972972972972974,33.0,0.908202928999799,0.9081816819998494,52.85162430918633,1.1683166273954602,0.44970414201183434,3940.0751953125,3960.0,131072,0.000579833984375,2.375,1.3916015625,1.7066666666666668,0.00927734375,0.00390625,0,0,32,0,888,37,medusa,0,37,37,48,32768,196,0,32,3,131072,0,0,0,0,16384,0,0,0,0,0,888,0,fixed,0,1221,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_kernel(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x"
+debugging,medusa_base,48,32,1.2,1.263157894736842,64.0,1.0470053660001213,1.0469837810001081,45.84503724500915,1.0,1.0,3944.08740234375,3962.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,63,0,1596,38,medusa,0,38,38,48,32768,240,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1596,0,fixed,0,2432,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function"
+debugging,turbo_fast_8,46,32,1.15,1.15,9.0,0.8710073240004021,0.8709814610001558,52.81241469788004,1.1519766995855016,1.0,3940.91796875,3958.0,131072,0.0005950927734375,2.4375,1.42822265625,1.7066666666666668,0.009521484375,0.00390625,0,0,8,0,200,40,medusa,0,40,40,46,32768,200,0,8,3,131072,0,0,0,0,16384,0,0,0,0,0,200,0,fixed,0,360,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when"
+debugging,turbo_fast_16,48,32,1.2,1.2,17.0,0.9604107449999901,0.9603791909999018,49.97861618051815,1.090164152630479,1.0,3938.0927734375,3958.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,16,0,480,40,medusa,0,40,40,48,32768,200,0,16,3,131072,0,0,0,0,16384,0,0,0,0,0,480,0,fixed,0,680,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function"
+debugging,turbo_fast_24,48,32,1.2,1.263157894736842,25.0,0.9470580400002291,0.9470301530000143,50.68327174540263,1.1055345309141436,1.0,3939.04150390625,3960.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,24,0,722,38,medusa,0,38,38,48,32768,200,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,722,0,fixed,0,950,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function"
+debugging,turbo_fast_32,48,32,1.2,1.263157894736842,33.0,0.9338853240001299,0.933863126000233,51.398173594163175,1.1211284074103038,1.0,3940.07568359375,3960.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,32,0,912,38,medusa,0,38,38,48,32768,200,0,32,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1254,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function"
+systems_code,medusa_base,48,32,1.2,1.2,64.0,1.1125370830000065,1.1125069419999818,43.14462927434817,1.0,1.0,3944.08740234375,3962.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,63,0,1680,40,medusa,0,40,40,48,32768,240,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1680,0,fixed,0,2560,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some work
+"
+systems_code,turbo_fast_8,43,32,1.075,1.075,9.0,0.8819249140001375,0.8818959549998908,48.75698522333988,1.1300823774218536,1.0,3940.91796875,3958.0,131072,0.00057220458984375,2.34375,1.373291015625,1.7066666666666668,0.0091552734375,0.00390625,0,0,8,0,200,40,medusa,0,40,40,43,32768,200,0,8,3,131072,0,0,0,0,16384,0,0,0,0,0,200,0,fixed,0,360,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function"
+systems_code,turbo_fast_16,46,32,1.15,1.15,17.0,0.9544135539999843,0.9543909959998018,48.19713614419264,1.117106276141964,1.0,3938.0771484375,3958.0,131072,0.0005950927734375,2.4375,1.42822265625,1.7066666666666668,0.009521484375,0.00390625,0,0,16,0,480,40,medusa,0,40,40,46,32768,200,0,16,3,131072,0,0,0,0,16384,0,0,0,0,0,480,0,fixed,0,680,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some"
+systems_code,turbo_fast_24,47,32,1.175,1.175,25.0,1.009224882000126,1.0091799589999937,46.5703936142095,1.079401872202391,1.0,3939.04150390625,3960.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,24,0,760,40,medusa,0,40,40,47,32768,200,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,760,0,fixed,0,1000,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some work"
+systems_code,turbo_fast_32,48,32,1.2,1.2,33.0,1.0136469330000182,1.013609304000056,47.353766323682194,1.0975587719752777,1.0,3940.07568359375,3960.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,32,0,960,40,medusa,0,40,40,48,32768,200,0,32,3,131072,0,0,0,0,16384,0,0,0,0,0,960,0,fixed,0,1320,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some work
+"
+long_context_4096t,medusa_base,48,4050,1.2,1.6,64.0,1.7582122839999101,1.7581904980002037,27.300457650540707,1.0,1.0,4223.8447265625,4314.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,63,0,1260,30,medusa,0,30,30,48,32768,4258,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1260,0,fixed,0,1920,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
+long_context_4096t,turbo_fast_8,48,4050,1.2,1.3333333333333333,9.0,1.7348183129997778,1.7347887589999118,27.66860347294832,1.0134849689012566,1.0,4225.78759765625,4310.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,8,0,180,36,medusa,0,36,36,48,32768,4218,0,8,3,131072,0,0,0,0,16384,0,0,0,0,0,180,0,fixed,0,324,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
+long_context_4096t,turbo_fast_16,48,4050,1.2,1.4545454545454546,17.0,1.7222452519999933,1.7222236429997793,27.870595052742342,1.0208838038358066,1.0,4222.3427734375,4310.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,16,0,396,33,medusa,0,33,33,48,32768,4218,0,16,3,131072,0,0,0,0,16384,0,0,0,0,0,396,0,fixed,0,561,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
+long_context_4096t,turbo_fast_24,48,4050,1.2,1.4545454545454546,25.0,1.7580673659999775,1.7580240900001627,27.302708035137154,1.0000824302883582,1.0,4222.84326171875,4312.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,24,0,627,33,medusa,0,33,33,48,32768,4218,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,627,0,fixed,0,825,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
+long_context_4096t,turbo_fast_32,48,4050,1.2,1.6,33.0,1.654849316000309,1.6548255350003274,29.005662047837493,1.062460652459539,1.0,4223.34375,4312.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,32,0,720,30,medusa,0,30,30,48,32768,4218,0,32,3,131072,0,0,0,0,16384,0,0,0,0,0,720,0,fixed,0,990,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "

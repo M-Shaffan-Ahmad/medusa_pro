@@ -1,6 +1,7 @@
 import argparse
 import csv
 import gc
+import math
 import os
 import re
 import sys
@@ -11,10 +12,62 @@ import torch
 from transformers import BitsAndBytesConfig
 
 sys.path.insert(0, os.path.dirname(__file__))
-from medusa.model.medusa_model import MedusaModel
+from medusa.model.medusa_model import MedusaModel, infer_model_context_window
 
 
 DEFAULT_MODEL_DIR = "Medusa/TinyLlama-1.1B-Chat-v1.0-4heads"
+
+
+def profile_defaults(profile):
+    profile = str(profile or "manual").lower()
+    if profile == "tinyllama":
+        return {
+            "model_dir": DEFAULT_MODEL_DIR,
+            "kv_max_length": 2048,
+            "kv_qjl_min_kv_len": 2048,
+        }
+    if profile == "llama32-long":
+        return {
+            "model_dir": os.environ.get(
+                "LLAMA32_MEDUSA_MODEL_DIR",
+                "Medusa/Llama-3.2-1B-Instruct-4heads",
+            ),
+            "kv_max_length": int(os.environ.get("LLAMA32_KV_MAX_LENGTH", "32768")),
+            "long_context_tokens": int(os.environ.get("LLAMA32_LONG_CONTEXT_TOKENS", "8192")),
+            "long_only": True,
+            "target_new_tokens": 96,
+            "max_steps": 64,
+            "kv_qjl_min_kv_len": 4096,
+            "hot_window": 1024,
+        }
+    if profile == "llama32-128k":
+        return {
+            "model_dir": os.environ.get(
+                "LLAMA32_MEDUSA_MODEL_DIR",
+                "Medusa/Llama-3.2-1B-Instruct-4heads",
+            ),
+            "kv_max_length": int(os.environ.get("LLAMA32_KV_MAX_LENGTH", "131072")),
+            "long_context_tokens": int(os.environ.get("LLAMA32_LONG_CONTEXT_TOKENS", "32768")),
+            "long_only": True,
+            "target_new_tokens": 128,
+            "max_steps": 80,
+            "kv_qjl_min_kv_len": 8192,
+            "hot_window": 2048,
+            "use_model_context_kv": True,
+        }
+    return {}
+
+
+def arg_was_provided(flag):
+    return any(arg == flag or arg.startswith(f"{flag}=") for arg in sys.argv[1:])
+
+
+def apply_profile_defaults(args):
+    defaults = profile_defaults(args.profile)
+    for dest, value in defaults.items():
+        flag = f"--{dest.replace('_', '-')}"
+        if not arg_was_provided(flag):
+            setattr(args, dest, value)
 
 BASE_PROMPTS = [
     (
@@ -62,10 +115,36 @@ GENERAL_PROMPTS = [
     ),
 ]
 
+CODING_PROMPTS = [
+    (
+        "python_grouping",
+        "Write a Python function that groups strings by their first letter. Include type hints and handle empty strings.",
+    ),
+    (
+        "cuda_kernel",
+        "Write a minimal CUDA C++ vector addition kernel and explain the grid-stride loop.",
+    ),
+    (
+        "debugging",
+        "A Python function mutates its default list argument across calls. Explain the bug and show a fixed implementation.",
+    ),
+    (
+        "systems_code",
+        "Write a concise C++ example that uses std::thread to split work across workers and joins them safely.",
+    ),
+]
+
 LONG_CONTEXT_SEED = (
     "Cache locality, memory bandwidth, kernel launch overhead, branch prediction, "
     "NUMA placement, PCIe transfer, KV cache reuse, and asynchronous prefetching "
     "all affect CPU and GPU program performance. "
+)
+
+CODE_CONTEXT_SEED = (
+    "Consider a codebase with Python data loaders, CUDA kernels, C++ worker pools, "
+    "unit tests, benchmarks, error handling, memory ownership, and profiling notes. "
+    "The implementation should prioritize correctness, readable control flow, "
+    "stable APIs, and predictable performance. "
 )
 
 
@@ -117,16 +196,76 @@ def estimate_ideal_turbo_vq_kv_mb(config, kv_len, bits=8, key_bits=None, residua
     return bytes_total / (1024**2)
 
 
-def build_prompts(long_repeat, long_only=False, prompt_suite="technical"):
+def estimate_packed_kv_qjl_sidecar_mb(config, kv_len, sketch_dim):
+    kv_heads = int(config.num_key_value_heads)
+    sketch_dim = int(max(0, sketch_dim))
+    if sketch_dim <= 0:
+        return 0.0
+    # Packed KV-QJL sketches are enabled for one key-cache layer in the current
+    # planner: kv_heads * sequence length * sketch_dim bits.
+    bytes_total = kv_heads * int(kv_len) * (sketch_dim / 8.0)
+    return bytes_total / (1024**2)
+
+
+def make_token_sized_long_prompt(tokenizer, target_tokens, seed=LONG_CONTEXT_SEED, suffix=None):
+    if suffix is None:
+        suffix = "Now summarize the most important optimization bottlenecks in five bullets."
+    if target_tokens <= 0:
+        return None
+    if tokenizer is None:
+        repeat = max(1, int(target_tokens) // 24)
+        return (seed * repeat) + suffix
+
+    seed_tokens = tokenizer(
+        seed,
+        add_special_tokens=False,
+    ).input_ids
+    suffix_tokens = tokenizer(suffix, add_special_tokens=False).input_ids
+    repeat = max(
+        1,
+        math.ceil(max(1, int(target_tokens) - len(suffix_tokens)) / max(1, len(seed_tokens))),
+    )
+    return (seed * repeat) + suffix
+
+
+def build_prompts(
+    long_repeat,
+    long_only=False,
+    prompt_suite="technical",
+    tokenizer=None,
+    long_context_tokens=0,
+):
     if long_only:
         prompts = []
     elif prompt_suite == "general":
         prompts = list(GENERAL_PROMPTS)
     elif prompt_suite == "mixed":
         prompts = list(BASE_PROMPTS) + list(GENERAL_PROMPTS)
+    elif prompt_suite == "coding":
+        prompts = list(CODING_PROMPTS)
     else:
         prompts = list(BASE_PROMPTS)
-    if long_repeat > 0:
+    if int(long_context_tokens) > 0:
+        seed = LONG_CONTEXT_SEED
+        suffix = "Now summarize the most important optimization bottlenecks in five bullets."
+        if prompt_suite == "coding":
+            seed = CODE_CONTEXT_SEED
+            suffix = (
+                "Now write a compact Python module that implements a benchmark timer, "
+                "validates inputs, and reports the fastest implementation."
+            )
+        prompts.append(
+            (
+                f"long_context_{int(long_context_tokens)}t",
+                make_token_sized_long_prompt(
+                    tokenizer,
+                    int(long_context_tokens),
+                    seed=seed,
+                    suffix=suffix,
+                ),
+            )
+        )
+    elif long_repeat > 0:
         prompts.append(
             (
                 "long_context",
@@ -547,6 +686,10 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
     use_model_choice_resolution = bool(call_kwargs.pop("_use_model_choice_resolution", False))
     call_kwargs["stream"] = args.stream
     call_kwargs["collect_stats"] = args.collect_stats
+    call_kwargs.setdefault("draft_head_type", args.draft_head_type)
+    call_kwargs.setdefault("tree_policy", args.tree_policy)
+    call_kwargs.setdefault("tree_calibration_path", args.tree_calibration_path)
+    call_kwargs.setdefault("turbo_kv_use_model_context", args.use_model_context_kv)
     call_medusa_choices = None if use_model_choice_resolution else medusa_choices
 
     start = time.perf_counter()
@@ -585,6 +728,15 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
         key_bits=call_kwargs.get("turbo_vq_key_bits"),
         residual_dim=int(call_kwargs.get("turbo_vq_residual_dim", args.residual_dim)),
     )
+    qjl_sidecar_mb = estimate_packed_kv_qjl_sidecar_mb(
+        model.config,
+        kv_len,
+        int(call_kwargs.get("turbo_kv_qjl_dim", args.kv_qjl_dim)),
+    )
+    model_context_window = infer_model_context_window(
+        model.config,
+        tokenizer=getattr(model, "tokenizer", None),
+    )
 
     row = {
         "mode": mode,
@@ -596,9 +748,13 @@ def run_one(model, prompt, medusa_choices, args, mode, kwargs):
         "tps": tokens / max(1e-6, end - start),
         "peak_alloc_mb": torch.cuda.max_memory_allocated() / (1024**2),
         "peak_reserved_mb": torch.cuda.max_memory_reserved() / (1024**2),
+        "model_context_window": model_context_window,
+        "context_utilization": kv_len / max(1, model_context_window),
         "fp16_kv_mb_est": fp16_kv_mb,
         "ideal_turbo_vq_kv_mb_est": ideal_vq_kv_mb,
         "ideal_turbo_vq_transfer_reduction": fp16_kv_mb / max(1e-6, ideal_vq_kv_mb),
+        "packed_kv_qjl_sidecar_mb_est": qjl_sidecar_mb,
+        "packed_kv_qjl_sidecar_pct_of_fp16_kv": qjl_sidecar_mb / max(1e-6, fp16_kv_mb),
         "text": text,
     }
     for key, value in stats.items():
@@ -618,6 +774,15 @@ def main():
     parser = argparse.ArgumentParser(
         description="Benchmark dense KV, QJL pruning, strict TurboVQ, and hybrid TurboVQ modes."
     )
+    parser.add_argument(
+        "--profile",
+        choices=("manual", "tinyllama", "llama32-long", "llama32-128k"),
+        default="manual",
+        help=(
+            "Apply benchmark defaults. llama32-* profiles use longer prompts and "
+            "larger KV allocations so TurboVQ and packed KV-QJL are exercised."
+        ),
+    )
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
     parser.add_argument("--out-csv", default="Medusa/comm_turbo_benchmark.csv")
     parser.add_argument("--max-steps", type=int, default=35)
@@ -631,9 +796,20 @@ def main():
         ),
     )
     parser.add_argument("--kv-max-length", type=int, default=2048)
+    parser.add_argument(
+        "--use-model-context-kv",
+        action="store_true",
+        help="Preallocate KV cache to at least the model/tokenizer context window.",
+    )
     parser.add_argument("--long-repeat", type=int, default=0)
+    parser.add_argument(
+        "--long-context-tokens",
+        type=int,
+        default=0,
+        help="Append a tokenizer-sized long-context prompt of roughly this many prompt tokens.",
+    )
     parser.add_argument("--long-only", action="store_true")
-    parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed"), default="technical")
+    parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed", "coding"), default="technical")
     parser.add_argument("--choice-max-depth", type=int, default=0)
     parser.add_argument("--choice-limit", type=int, default=0)
     parser.add_argument(
@@ -695,8 +871,12 @@ def main():
     parser.add_argument("--stream", action="store_true")
     parser.add_argument("--no-stats", dest="collect_stats", action="store_false")
     parser.set_defaults(collect_stats=True)
+    parser.add_argument("--draft-head-type", choices=("medusa", "hydra"), default="medusa")
+    parser.add_argument("--tree-policy", choices=("fixed", "adaptive_calibrated"), default="fixed")
+    parser.add_argument("--tree-calibration-path", default="")
     parser.add_argument("--only", default="")
     args = parser.parse_args()
+    apply_profile_defaults(args)
 
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is required. Run outside the sandbox or on a GPU machine.")
@@ -739,6 +919,8 @@ def main():
     print(
         "model",
         args.model_dir,
+        "profile",
+        args.profile,
         "choices",
         len(medusa_choices),
         "max_depth",
@@ -747,12 +929,18 @@ def main():
         args.max_steps,
         "kv_max_length",
         args.kv_max_length,
+        "use_model_context_kv",
+        int(bool(args.use_model_context_kv)),
+        "long_context_tokens",
+        args.long_context_tokens,
     )
 
     prompts = build_prompts(
         args.long_repeat,
         long_only=args.long_only,
         prompt_suite=args.prompt_suite,
+        tokenizer=getattr(model, "tokenizer", None),
+        long_context_tokens=args.long_context_tokens,
     )
     modes = build_modes(args)
     if not modes:
@@ -811,9 +999,13 @@ def main():
         "prefix_match_vs_base",
         "peak_alloc_mb",
         "peak_reserved_mb",
+        "model_context_window",
+        "context_utilization",
         "fp16_kv_mb_est",
         "ideal_turbo_vq_kv_mb_est",
         "ideal_turbo_vq_transfer_reduction",
+        "packed_kv_qjl_sidecar_mb_est",
+        "packed_kv_qjl_sidecar_pct_of_fp16_kv",
     ]
     stat_keys = sorted({key for row in rows for key in row if key.startswith("stat_")})
     fields = preferred + stat_keys + ["text"]

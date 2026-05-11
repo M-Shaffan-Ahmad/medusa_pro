@@ -1,0 +1,1616 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medusa LLM Acceleration Presentation</title>
+  <style>
+    :root {
+      --bg: #eef3f8;
+      --slide: #fbfcff;
+      --ink: #111827;
+      --muted: #526072;
+      --line: #d7e0ec;
+      --teal: #008f8c;
+      --blue: #2563eb;
+      --coral: #ef6f4e;
+      --gold: #c98610;
+      --green: #148b5f;
+      --red: #b91c1c;
+      --dark: #111827;
+      --soft: #f6f8fc;
+      --shadow: 0 22px 55px rgba(22, 34, 51, 0.13);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(17, 24, 39, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(17, 24, 39, 0.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100svh;
+      min-height: 720px;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: 34px 44px 54px;
+    }
+
+    .slide.active {
+      display: block;
+    }
+
+    .canvas {
+      position: relative;
+      width: min(1240px, calc(100vw - 88px));
+      height: min(700px, calc(100svh - 88px));
+      min-height: 620px;
+      margin: 0 auto;
+      padding: 34px 38px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--slide);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 24px;
+    }
+
+    .slide.dark .canvas {
+      color: #f9fafb;
+      border-color: rgba(255, 255, 255, 0.18);
+      background:
+        linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(20, 50, 54, 0.96)),
+        #111827;
+    }
+
+    .header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
+      align-items: start;
+      gap: 26px;
+      min-height: 0;
+    }
+
+    .kicker {
+      margin: 0 0 9px;
+      color: var(--teal);
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 850;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .slide.dark .kicker {
+      color: #7dd3d0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(58px, 6.2vw, 84px);
+      line-height: 0.98;
+      font-weight: 870;
+    }
+
+    h2 {
+      max-width: 960px;
+      font-size: clamp(32px, 3.3vw, 44px);
+      line-height: 1.08;
+      font-weight: 850;
+    }
+
+    h3 {
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 810;
+    }
+
+    .lead {
+      max-width: 560px;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.45;
+      font-weight: 520;
+    }
+
+    .slide.dark .lead,
+    .slide.dark .muted,
+    .slide.dark .small-note {
+      color: #d8e2f0;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      gap: 22px;
+    }
+
+    .content.center {
+      align-content: center;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .two-col.wide-left {
+      grid-template-columns: 1.12fr 0.88fr;
+    }
+
+    .two-col.wide-right {
+      grid-template-columns: 0.88fr 1.12fr;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      min-height: 0;
+    }
+
+    .four-col {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      min-height: 0;
+    }
+
+    .panel,
+    .metric,
+    .file-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 12px 32px rgba(22, 34, 51, 0.08);
+    }
+
+    .panel {
+      padding: 24px;
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .slide.dark .panel,
+    .slide.dark .metric,
+    .slide.dark .file-card {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: none;
+    }
+
+    .metric {
+      padding: 22px;
+      display: grid;
+      gap: 9px;
+      align-content: start;
+      min-height: 132px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .slide.dark .metric-label {
+      color: #c9d4e6;
+    }
+
+    .metric-value {
+      color: var(--ink);
+      font-size: 44px;
+      line-height: 1;
+      font-weight: 880;
+    }
+
+    .slide.dark .metric-value {
+      color: #fff;
+    }
+
+    .metric p,
+    .panel p,
+    .file-card p {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.42;
+      font-weight: 520;
+    }
+
+    .slide.dark .metric p,
+    .slide.dark .panel p,
+    .slide.dark .file-card p {
+      color: #d8e2f0;
+    }
+
+    .bullets {
+      display: grid;
+      gap: 15px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .bullets li {
+      position: relative;
+      padding-left: 28px;
+      color: var(--muted);
+      font-size: 19px;
+      line-height: 1.42;
+      font-weight: 540;
+    }
+
+    .bullets li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.58em;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--teal);
+    }
+
+    .slide.dark .bullets li {
+      color: #e1e8f2;
+    }
+
+    .slide.dark .bullets li::before {
+      background: var(--coral);
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .slide.dark .tag {
+      color: #f9fafb;
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .visual {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .visual img {
+      display: block;
+      max-width: 100%;
+      max-height: 330px;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    .visual.tall img {
+      max-height: 320px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.04fr 0.96fr;
+      gap: 30px;
+      align-items: center;
+      min-height: 0;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 26px;
+      align-content: center;
+    }
+
+    .speed-card {
+      min-height: 440px;
+      padding: 28px;
+      border-radius: 8px;
+      background:
+        linear-gradient(145deg, rgba(0, 143, 140, 0.22), rgba(37, 99, 235, 0.15)),
+        rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      display: grid;
+      align-content: center;
+      gap: 26px;
+    }
+
+    .speed-number {
+      font-size: 118px;
+      line-height: 0.85;
+      font-weight: 900;
+    }
+
+    .speed-card p {
+      color: #d8e2f0;
+      font-size: 24px;
+      line-height: 1.25;
+      font-weight: 650;
+    }
+
+    .chart-title {
+      font-size: 18px;
+      font-weight: 820;
+      color: var(--ink);
+    }
+
+    .slide.dark .chart-title {
+      color: #fff;
+    }
+
+    svg {
+      max-width: 100%;
+      height: auto;
+      overflow: visible;
+      font-family: inherit;
+    }
+
+    .axis-label {
+      fill: var(--muted);
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .chart-label {
+      fill: var(--ink);
+      font-size: 18px;
+      font-weight: 820;
+    }
+
+    .slide.dark .axis-label {
+      fill: #c9d4e6;
+    }
+
+    .slide.dark .chart-label {
+      fill: #f9fafb;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .step {
+      min-height: 172px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      gap: 11px;
+      align-content: start;
+    }
+
+    .step-num {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-weight: 850;
+    }
+
+    .step:nth-child(2) .step-num {
+      background: var(--blue);
+    }
+
+    .step:nth-child(3) .step-num {
+      background: var(--gold);
+    }
+
+    .step:nth-child(4) .step-num {
+      background: var(--coral);
+    }
+
+    .step:nth-child(5) .step-num {
+      background: var(--green);
+    }
+
+    .step:nth-child(6) .step-num {
+      background: var(--dark);
+    }
+
+    .step p {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 520;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 13px;
+      align-items: stretch;
+    }
+
+    .flow-box {
+      padding: 18px;
+      min-height: 142px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      gap: 9px;
+      align-content: start;
+    }
+
+    .flow-box strong {
+      font-size: 20px;
+      line-height: 1.18;
+    }
+
+    .flow-box span {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 520;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 18px;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+
+    .table th,
+    .table td {
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--soft);
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .table strong {
+      font-weight: 830;
+    }
+
+    .code {
+      display: inline-block;
+      padding: 3px 7px;
+      border-radius: 5px;
+      background: #eef2f7;
+      color: #223044;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      font-weight: 700;
+    }
+
+    .slide.dark .code {
+      background: rgba(255, 255, 255, 0.13);
+      color: #f9fafb;
+    }
+
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .decision-box {
+      padding: 18px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      min-height: 170px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .decision-box .label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .decision-box p {
+      font-size: 18px;
+    }
+
+    .donut-wrap {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .donut {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #fff 0 41%, transparent 42%),
+        conic-gradient(var(--teal) 0 70%, var(--blue) 70% 85%, var(--gold) 85% 95%, var(--coral) 95% 100%);
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 32px rgba(22, 34, 51, 0.08);
+    }
+
+    .legend {
+      display: grid;
+      gap: 12px;
+    }
+
+    .legend-row {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: var(--teal);
+    }
+
+    .legend-row:nth-child(2) .swatch {
+      background: var(--blue);
+    }
+
+    .legend-row:nth-child(3) .swatch {
+      background: var(--gold);
+    }
+
+    .legend-row:nth-child(4) .swatch {
+      background: var(--coral);
+    }
+
+    .failure-chain {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .chain-box {
+      padding: 18px;
+      min-height: 130px;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--dark);
+      display: grid;
+      align-content: center;
+      text-align: center;
+      font-size: 20px;
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .chain-box:nth-child(2) {
+      background: var(--blue);
+    }
+
+    .chain-box:nth-child(3) {
+      background: var(--coral);
+    }
+
+    .chain-box:nth-child(4) {
+      background: var(--red);
+    }
+
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 13px;
+    }
+
+    .file-card {
+      padding: 15px;
+      min-height: 96px;
+      display: grid;
+      gap: 8px;
+      box-shadow: none;
+    }
+
+    .file-card code {
+      color: var(--ink);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.25;
+      font-weight: 760;
+      word-break: break-word;
+    }
+
+    .file-card p {
+      font-size: 14px;
+      line-height: 1.3;
+    }
+
+    .small-note {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.35;
+      font-weight: 560;
+    }
+
+    .footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 5;
+      display: block;
+      height: 6px;
+      pointer-events: none;
+    }
+
+    .brand {
+      display: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 830;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .count {
+      display: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    body.dark-active .brand,
+    body.dark-active .count {
+      color: #d8e2f0;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 0;
+      background: rgba(17, 24, 39, 0.12);
+      overflow: hidden;
+    }
+
+    body.dark-active .progress-track {
+      background: rgba(255, 255, 255, 0.17);
+    }
+
+    .progress {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--teal), var(--blue), var(--coral));
+    }
+
+    .controls {
+      position: fixed;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 6;
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(17, 24, 39, 0.18);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 10px 24px rgba(22, 34, 51, 0.17);
+      cursor: pointer;
+    }
+
+    .nav::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 11px;
+      height: 11px;
+      border-top: 2px solid var(--ink);
+      border-right: 2px solid var(--ink);
+      transform-origin: center;
+    }
+
+    .nav.prev::before {
+      transform: translate(-35%, -50%) rotate(-135deg);
+    }
+
+    .nav.next::before {
+      transform: translate(-65%, -50%) rotate(45deg);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1080px) {
+      .deck {
+        min-height: 760px;
+      }
+
+      .canvas {
+        min-height: 680px;
+      }
+
+      .two-col,
+      .two-col.wide-left,
+      .two-col.wide-right,
+      .hero-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .three-col,
+      .four-col,
+      .timeline,
+      .flow,
+      .decision,
+      .failure-chain,
+      .file-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .donut-wrap {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-height: 760px) {
+      .slide {
+        padding-top: 24px;
+      }
+
+      .canvas {
+        height: min(642px, calc(100svh - 74px));
+        min-height: 600px;
+        padding: 28px 32px;
+        gap: 18px;
+      }
+
+      h1 {
+        font-size: clamp(54px, 5.7vw, 76px);
+      }
+
+      h2 {
+        font-size: clamp(31px, 3.2vw, 42px);
+      }
+
+      .lead,
+      .bullets li {
+        font-size: 18px;
+      }
+
+      .visual img {
+        max-height: 300px;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        overflow: visible;
+        background: #fff;
+      }
+
+      .deck {
+        height: auto;
+      }
+
+      .slide,
+      .slide.active {
+        position: relative;
+        display: block;
+        page-break-after: always;
+      }
+
+      .canvas {
+        width: 100%;
+        height: 100vh;
+        box-shadow: none;
+      }
+
+      .footer,
+      .controls {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck">
+    <section class="slide dark active" data-title="Title">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">PDC project presentation</p>
+            <h1>Medusa LLM Acceleration</h1>
+          </div>
+          <div class="tag-row">
+            <span class="tag">TinyLlama 1.1B</span>
+            <span class="tag">4 heads</span>
+            <span class="tag">CUDA + Triton</span>
+          </div>
+        </div>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="lead">A clearer project journey: why the 64-node Medusa base gave the strongest speedup, what we implemented in Triton/Turbo/QJL, and why TurboQuant plus Llama 3.2 head training did not land.</p>
+            <div class="tag-row">
+              <span class="tag">Tree decoding</span>
+              <span class="tag">KV cache</span>
+              <span class="tag">QJL</span>
+              <span class="tag">Head training</span>
+            </div>
+          </div>
+          <div class="speed-card">
+            <div class="speed-number">64</div>
+            <p>node Medusa base was the headline result, compared with the 24-node optimized tree path.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Headline">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">headline result</p>
+            <h2>Maximum speedup came from the 64-node Medusa base path.</h2>
+          </div>
+          <p class="lead">The 24-node optimized tree reduced verifier work, but it could lose too much speculative depth.</p>
+        </div>
+        <div class="two-col wide-left">
+          <div class="panel">
+            <p class="chart-title">Candidate tree budget</p>
+            <svg viewBox="0 0 680 330" role="img" aria-label="64 node Medusa base compared with 24 node optimized tree">
+              <line x1="135" y1="260" x2="620" y2="260" stroke="#d7e0ec" stroke-width="2"/>
+              <text x="135" y="292" class="axis-label">0</text>
+              <text x="375" y="292" class="axis-label">32</text>
+              <text x="600" y="292" class="axis-label">64</text>
+              <text x="24" y="98" class="chart-label">Medusa base</text>
+              <rect x="220" y="68" width="400" height="46" rx="23" fill="#dbe4ef"/>
+              <rect x="220" y="68" width="400" height="46" rx="23" fill="url(#baseGrad)"/>
+              <text x="638" y="99" class="chart-label">64</text>
+              <text x="24" y="190" class="chart-label">Optimized tree</text>
+              <rect x="220" y="160" width="400" height="46" rx="23" fill="#dbe4ef"/>
+              <rect x="220" y="160" width="150" height="46" rx="23" fill="url(#optGrad)"/>
+              <text x="638" y="191" class="chart-label">24</text>
+              <defs>
+                <linearGradient id="baseGrad" x1="0" x2="1">
+                  <stop offset="0%" stop-color="#008f8c"/>
+                  <stop offset="100%" stop-color="#148b5f"/>
+                </linearGradient>
+                <linearGradient id="optGrad" x1="0" x2="1">
+                  <stop offset="0%" stop-color="#ef6f4e"/>
+                  <stop offset="100%" stop-color="#c98610"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="panel">
+            <ul class="bullets">
+              <li>Speed was driven by accepted tokens per decode step.</li>
+              <li>Smaller trees help only when acceptance stays high.</li>
+              <li>Fallback verification erased many pruning gains.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Journey">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">project journey</p>
+            <h2>From simple Medusa speedup to systems-level bottlenecks.</h2>
+          </div>
+        </div>
+        <div class="timeline">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>Baseline</h3>
+            <p>Measured standard autoregressive TinyLlama generation.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>Medusa</h3>
+            <p>Added tree decoding with four speculative heads.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>Triton</h3>
+            <p>Fused expensive selection and verifier routines.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <h3>Turbo</h3>
+            <p>Tried smaller and adaptive trees with fallback.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <h3>QJL + VQ</h3>
+            <p>Compressed and sketched cache state for pruning.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">6</div>
+            <h3>Training</h3>
+            <p>Self-distilled heads and tested Llama 3.2 transfer.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <p>The final story is not just "make the tree smaller". The real objective is: keep acceptance deep, keep verification exact, and keep KV cache movement cheap.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Medusa">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">core idea</p>
+            <h2>Medusa predicts several future tokens, then the base model verifies them.</h2>
+          </div>
+        </div>
+        <div class="two-col wide-right">
+          <div class="panel">
+            <div class="flow">
+              <div class="flow-box">
+                <strong>1. Heads</strong>
+                <span>Extra heads propose future token options.</span>
+              </div>
+              <div class="flow-box">
+                <strong>2. Tree</strong>
+                <span>Options become a tree-attention batch.</span>
+              </div>
+              <div class="flow-box">
+                <strong>3. Verify</strong>
+                <span>The original model checks candidate prefixes.</span>
+              </div>
+              <div class="flow-box">
+                <strong>4. Accept</strong>
+                <span>The longest matching prefix is appended.</span>
+              </div>
+            </div>
+            <p class="small-note">The base model remains the source of truth. Medusa wins only when it lets one verifier step accept multiple tokens.</p>
+          </div>
+          <div class="visual tall panel">
+            <img src="assets/medusa_pipeline.jpg" alt="Medusa pipeline diagram">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Benchmark">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">benchmark design</p>
+            <h2>We measured speed, quality, and cache cost together.</h2>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Path</th>
+                  <th>What it checked</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Baseline</strong></td>
+                  <td>Plain Hugging Face autoregressive generation.</td>
+                </tr>
+                <tr>
+                  <td><strong>Medusa base</strong></td>
+                  <td>Tree decoding with the full candidate set.</td>
+                </tr>
+                <tr>
+                  <td><strong>Turbo modes</strong></td>
+                  <td>24-node, adaptive, fused, QJL, packed KV-QJL, and VQ variants.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <p class="chart-title">Metrics that mattered</p>
+            <div class="four-col">
+              <div class="metric">
+                <div class="metric-label">Speed</div>
+                <div class="metric-value">TPS</div>
+                <p>tokens per second</p>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Depth</div>
+                <div class="metric-value">A/S</div>
+                <p>accepted tokens per step</p>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Cost</div>
+                <div class="metric-value">N/S</div>
+                <p>verified nodes per step</p>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Quality</div>
+                <div class="metric-value">PM</div>
+                <p>prefix match</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="small-note">Relevant files: <span class="code">bench_base.py</span>, <span class="code">bench_medusa.py</span>, <span class="code">run_batch_benchmark.py</span>, <span class="code">bench_comm_turbo.py</span>.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Results">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">results</p>
+            <h2>The Medusa path confirmed the speedup mechanism.</h2>
+          </div>
+          <p class="lead">Existing project assets summarize the expected Medusa speedup behavior across model sizes and categories.</p>
+        </div>
+        <div class="two-col">
+          <div class="visual panel">
+            <img src="assets/medusa_speedup_cmp.jpg" alt="Medusa speedup comparison graph">
+          </div>
+          <div class="visual panel">
+            <img src="assets/category_speedup.png" alt="Category speedup graph">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Implementation">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">implementation map</p>
+            <h2>The codebase split into model control, decode utilities, and cache kernels.</h2>
+          </div>
+        </div>
+        <div class="three-col">
+          <div class="panel">
+            <h3>Model path</h3>
+            <p><span class="code">medusa_model.py</span></p>
+            <ul class="bullets">
+              <li>Loads Medusa heads.</li>
+              <li>Runs the generation loop.</li>
+              <li>Collects Turbo stats.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Decode path</h3>
+            <p><span class="code">utils.py</span></p>
+            <ul class="bullets">
+              <li>Builds tree buffers.</li>
+              <li>Evaluates acceptance.</li>
+              <li>Plans pruning.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Cache path</h3>
+            <p><span class="code">kv_cache.py</span> + <span class="code">triton_kernels.py</span></p>
+            <ul class="bullets">
+              <li>Maintains KV state.</li>
+              <li>Compresses VQ cache.</li>
+              <li>Accelerates QJL scoring.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel">
+          <svg viewBox="0 0 1060 120" role="img" aria-label="Implementation flow">
+            <rect x="20" y="28" width="225" height="64" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
+            <rect x="295" y="28" width="225" height="64" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
+            <rect x="570" y="28" width="225" height="64" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
+            <rect x="845" y="28" width="195" height="64" rx="8" fill="#ffece7" stroke="#f3b29d"/>
+            <text x="132" y="67" text-anchor="middle" class="chart-label">Medusa heads</text>
+            <text x="407" y="67" text-anchor="middle" class="chart-label">Tree decode</text>
+            <text x="682" y="67" text-anchor="middle" class="chart-label">KV cache</text>
+            <text x="942" y="67" text-anchor="middle" class="chart-label">Triton kernels</text>
+            <path d="M250 60 L290 60" stroke="#526072" stroke-width="3"/>
+            <path d="M525 60 L565 60" stroke="#526072" stroke-width="3"/>
+            <path d="M800 60 L840 60" stroke="#526072" stroke-width="3"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Triton">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">triton implementation</p>
+            <h2>Triton removed avoidable verifier and planning overhead.</h2>
+          </div>
+        </div>
+        <div class="two-col wide-left">
+          <div class="panel">
+            <svg viewBox="0 0 680 360" role="img" aria-label="Triton optimization flow">
+              <rect x="35" y="48" width="250" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
+              <text x="160" y="90" text-anchor="middle" class="chart-label">tree hidden states</text>
+              <rect x="395" y="48" width="250" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
+              <text x="520" y="90" text-anchor="middle" class="chart-label">lm_head_argmax</text>
+              <rect x="35" y="228" width="250" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
+              <text x="160" y="270" text-anchor="middle" class="chart-label">QJL selector</text>
+              <rect x="395" y="228" width="250" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
+              <text x="520" y="270" text-anchor="middle" class="chart-label">exact acceptance</text>
+              <path d="M292 83 L388 83" stroke="#526072" stroke-width="3"/>
+              <path d="M520 124 L520 222" stroke="#526072" stroke-width="3"/>
+              <path d="M292 263 L388 263" stroke="#526072" stroke-width="3"/>
+              <path d="M160 124 L160 222" stroke="#526072" stroke-width="3"/>
+            </svg>
+          </div>
+          <div class="panel">
+            <ul class="bullets">
+              <li>Greedy verification only needs argmax, not full logits.</li>
+              <li>QJL scoring uses packed XNOR-popcount kernels.</li>
+              <li>Pruned layouts are cached so masks are not rebuilt every step.</li>
+              <li>Triton improved the fast path, but acceptance quality still dominated.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Turbo">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">turbo optimization</p>
+            <h2>Turbo tried to prune the tree only when the verifier could still accept deeply.</h2>
+          </div>
+        </div>
+        <div class="decision">
+          <div class="decision-box">
+            <div class="label">confident branch</div>
+            <h3>Use compact tree</h3>
+            <p>24-node or pruned path reduces verifier nodes.</p>
+          </div>
+          <div class="decision-box">
+            <div class="label">uncertain branch</div>
+            <h3>Use full tree</h3>
+            <p>Full verification protects acceptance and prefix match.</p>
+          </div>
+          <div class="decision-box">
+            <div class="label">bad prune</div>
+            <h3>Fallback</h3>
+            <p>Rewind cache length and verify the full tree again.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <svg viewBox="0 0 1080 170" role="img" aria-label="Turbo decision graph">
+            <rect x="20" y="55" width="210" height="58" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
+            <text x="125" y="91" text-anchor="middle" class="chart-label">Medusa prior</text>
+            <path d="M238 84 L330 84" stroke="#526072" stroke-width="3"/>
+            <rect x="340" y="35" width="240" height="98" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
+            <text x="460" y="74" text-anchor="middle" class="chart-label">confidence gate</text>
+            <text x="460" y="102" text-anchor="middle" class="axis-label">margin + node gain</text>
+            <path d="M590 70 L700 45" stroke="#148b5f" stroke-width="4"/>
+            <path d="M590 98 L700 128" stroke="#ef6f4e" stroke-width="4"/>
+            <rect x="710" y="15" width="300" height="58" rx="8" fill="#e8f7ef" stroke="#9bd8bd"/>
+            <text x="860" y="51" text-anchor="middle" class="chart-label">pruned verifier</text>
+            <rect x="710" y="100" width="300" height="58" rx="8" fill="#ffece7" stroke="#f3b29d"/>
+            <text x="860" y="136" text-anchor="middle" class="chart-label">full verifier</text>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="QJL">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">QJL</p>
+            <h2>QJL gave a cheap ranking signal, not a replacement for exact verification.</h2>
+          </div>
+        </div>
+        <div class="two-col wide-left">
+          <div class="panel">
+            <p class="chart-title">Packed 1-bit QJL sketch</p>
+            <svg viewBox="0 0 720 360" role="img" aria-label="QJL XNOR popcount diagram">
+              <rect x="40" y="55" width="170" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
+              <text x="125" y="97" text-anchor="middle" class="chart-label">query bits</text>
+              <rect x="40" y="230" width="170" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
+              <text x="125" y="272" text-anchor="middle" class="chart-label">key bits</text>
+              <rect x="285" y="142" width="170" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
+              <text x="370" y="184" text-anchor="middle" class="chart-label">XNOR</text>
+              <rect x="530" y="142" width="150" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
+              <text x="605" y="184" text-anchor="middle" class="chart-label">popcount</text>
+              <path d="M215 90 L278 160" stroke="#526072" stroke-width="3"/>
+              <path d="M215 265 L278 195" stroke="#526072" stroke-width="3"/>
+              <path d="M460 177 L522 177" stroke="#526072" stroke-width="3"/>
+              <text x="125" y="160" text-anchor="middle" class="axis-label">sign(Rq)</text>
+              <text x="125" y="335" text-anchor="middle" class="axis-label">sign(RK)</text>
+              <text x="606" y="240" text-anchor="middle" class="axis-label">approx score</text>
+            </svg>
+          </div>
+          <div class="panel">
+            <div class="three-col">
+              <div class="metric">
+                <div class="metric-label">Microbench</div>
+                <div class="metric-value">64</div>
+                <p>candidate nodes</p>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Sketch</div>
+                <div class="metric-value">128</div>
+                <p>packed dimensions</p>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Key sidecar</div>
+                <div class="metric-value">16x</div>
+                <p>smaller than FP16 keys at dim 128</p>
+              </div>
+            </div>
+            <ul class="bullets">
+              <li>Useful before verification.</li>
+              <li>Unsafe as the final decision.</li>
+              <li>Best when it preserves high-probability deep paths.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="TurboQuant">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">TurboQuant and KV cache</p>
+            <h2>KV compression saved memory in theory, but verification needed accurate cache state.</h2>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <svg viewBox="0 0 640 350" role="img" aria-label="TurboQuant KV cache diagram">
+              <rect x="36" y="54" width="220" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
+              <text x="146" y="96" text-anchor="middle" class="chart-label">FP16 KV</text>
+              <rect x="386" y="54" width="220" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
+              <text x="496" y="96" text-anchor="middle" class="chart-label">VQ cache</text>
+              <rect x="386" y="154" width="220" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
+              <text x="496" y="196" text-anchor="middle" class="chart-label">residual signs</text>
+              <rect x="386" y="254" width="220" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
+              <text x="496" y="296" text-anchor="middle" class="chart-label">hot FP16 window</text>
+              <path d="M262 89 L378 89" stroke="#526072" stroke-width="3"/>
+              <path d="M262 89 L378 189" stroke="#526072" stroke-width="3"/>
+              <path d="M262 89 L378 289" stroke="#526072" stroke-width="3"/>
+            </svg>
+          </div>
+          <div class="panel">
+            <ul class="bullets">
+              <li>Rotated scalar quantization stores compact keys and values.</li>
+              <li>Residual signs try to recover lost inner-product structure.</li>
+              <li>Hybrid mode keeps recent tokens exact in a hot window.</li>
+              <li>The verifier still often pays for dequantization, copies, and rewinds.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Failure">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">why it failed</p>
+            <h2>The failure was caused by KV-cache overhead plus lower acceptance.</h2>
+          </div>
+        </div>
+        <div class="failure-chain">
+          <div class="chain-box">Approximate pruning drops deep candidates</div>
+          <div class="chain-box">Accepted tokens per step go down</div>
+          <div class="chain-box">More decode steps touch KV cache</div>
+          <div class="chain-box">Fallback and dequant erase gains</div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Root cause</h3>
+            <p>Medusa speedup depends on exact verifier acceptance. Once the cache path had to compress, sketch, copy, rewind, or dequantize, the overhead could be larger than the work saved by pruning.</p>
+          </div>
+          <div class="panel">
+            <h3>Practical lesson</h3>
+            <p>The 64-node base path stayed strong because it preserved candidate depth and avoided many recovery paths. The optimized path needed both lower node cost and equal acceptance.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Training">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">head training</p>
+            <h2>Head quality became the final bottleneck.</h2>
+          </div>
+        </div>
+        <div class="two-col wide-left">
+          <div class="panel">
+            <div class="donut-wrap">
+              <div class="donut" aria-hidden="true"></div>
+              <div class="legend">
+                <div class="legend-row"><span class="swatch"></span><span>UltraChat</span><strong>70%</strong></div>
+                <div class="legend-row"><span class="swatch"></span><span>SlimOrca</span><strong>15%</strong></div>
+                <div class="legend-row"><span class="swatch"></span><span>CodeAlpaca</span><strong>10%</strong></div>
+                <div class="legend-row"><span class="swatch"></span><span>GSM8K</span><strong>5%</strong></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <ul class="bullets">
+              <li>TinyLlama training froze the base model and trained only Medusa heads.</li>
+              <li>The target was self-distilled greedy future tokens from the base model.</li>
+              <li>Llama 3.2 did not train heads well enough for deep acceptance.</li>
+              <li>Weak heads increased decode steps, which amplified KV-cache overhead.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="small-note">Relevant files: <span class="code">train_tinyllama_medusa_heads.py</span> and <span class="code">kaggle_mix_and_train_medusa.py</span>.</p>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Next Technique">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">practical upgrade</p>
+            <h2>The next speed lever is better accepted depth, then calibrated cost control.</h2>
+          </div>
+        </div>
+        <div class="three-col">
+          <div class="panel">
+            <h3>Hydra scaffold</h3>
+            <p>Later draft heads can condition on earlier speculative token embeddings, targeting the weak-head bottleneck without changing verifier correctness.</p>
+          </div>
+          <div class="panel">
+            <h3>Calibrated tree</h3>
+            <p>A sweep records which choice budget gives the best exact-safe tokens per second on the current GPU and prompt mix.</p>
+          </div>
+          <div class="panel">
+            <h3>Exact boundary</h3>
+            <p>Every fast path still uses the base verifier for final acceptance; approximate signals only choose what to verify.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <ul class="bullets">
+            <li><span class="code">draft_head_type="hydra"</span> is available as training/inference scaffolding.</li>
+            <li><span class="code">tree_policy="adaptive_calibrated"</span> falls back when calibration is missing or confidence is low.</li>
+            <li><span class="code">calibrate_tree_policy.py</span> writes the accepted-token and verified-node data used by the policy.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Final">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">final takeaways</p>
+            <h2>Medusa acceleration is a contract between heads, verifier, and KV cache.</h2>
+          </div>
+        </div>
+        <div class="three-col">
+          <div class="metric">
+            <div class="metric-label">Best result</div>
+            <div class="metric-value">64</div>
+            <p>node Medusa base gave the strongest project headline.</p>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Best engineering</div>
+            <div class="metric-value">Triton</div>
+            <p>kernels reduced verifier and planning overhead.</p>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Main blocker</div>
+            <div class="metric-value">KV</div>
+            <p>cache movement and reconstruction erased many quantization gains.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <ul class="bullets">
+            <li>Optimize accepted tokens per step, not just node count.</li>
+            <li>Use approximate QJL only for pruning, never for final acceptance.</li>
+            <li>Hydra-style heads and calibrated tree policies are the practical next step after the current exact verifier path.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Files">
+      <div class="canvas">
+        <div class="header">
+          <div>
+            <p class="kicker">file appendix</p>
+            <h2>Files to open during questions.</h2>
+          </div>
+        </div>
+        <div class="file-grid">
+          <a class="file-card" href="bench_base.py" target="_blank"><code>bench_base.py</code><p>Baseline generation.</p></a>
+          <a class="file-card" href="bench_medusa.py" target="_blank"><code>bench_medusa.py</code><p>Medusa benchmark.</p></a>
+          <a class="file-card" href="bench_comm_turbo.py" target="_blank"><code>bench_comm_turbo.py</code><p>Turbo and QJL sweeps.</p></a>
+          <a class="file-card" href="calibrate_tree_policy.py" target="_blank"><code>calibrate_tree_policy.py</code><p>Tree calibration.</p></a>
+          <a class="file-card" href="bench_qjl_popcount.py" target="_blank"><code>bench_qjl_popcount.py</code><p>QJL microbenchmark.</p></a>
+          <a class="file-card" href="medusa/model/medusa_model.py" target="_blank"><code>medusa/model/medusa_model.py</code><p>Generation loop.</p></a>
+          <a class="file-card" href="medusa/model/utils.py" target="_blank"><code>medusa/model/utils.py</code><p>Decode utilities.</p></a>
+          <a class="file-card" href="medusa/model/kv_cache.py" target="_blank"><code>medusa/model/kv_cache.py</code><p>KV cache modes.</p></a>
+          <a class="file-card" href="medusa/model/triton_kernels.py" target="_blank"><code>medusa/model/triton_kernels.py</code><p>Triton kernels.</p></a>
+          <a class="file-card" href="train_tinyllama_medusa_heads.py" target="_blank"><code>train_tinyllama_medusa_heads.py</code><p>Head trainer.</p></a>
+          <a class="file-card" href="kaggle_mix_and_train_medusa.py" target="_blank"><code>kaggle_mix_and_train_medusa.py</code><p>Training data mix.</p></a>
+          <a class="file-card" href="run_batch_benchmark.py" target="_blank"><code>run_batch_benchmark.py</code><p>10-prompt suite.</p></a>
+          <a class="file-card" href="TinyLlama-1.1B-Chat-v1.0-4heads/config.json" target="_blank"><code>TinyLlama.../config.json</code><p>Local head config.</p></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="footer" aria-hidden="true">
+    <span class="brand">Medusa LLM acceleration</span>
+    <span class="count" id="count">01 / 16</span>
+    <span></span>
+    <div class="progress-track"><div class="progress" id="progress"></div></div>
+  </div>
+
+  <div class="controls" aria-label="Slide navigation">
+    <button class="nav prev" id="prev" type="button" title="Previous slide"><span class="sr-only">Previous slide</span></button>
+    <button class="nav next" id="next" type="button" title="Next slide"><span class="sr-only">Next slide</span></button>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const progress = document.getElementById("progress");
+    const count = document.getElementById("count");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    let current = 0;
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function show(index) {
+      current = Math.max(0, Math.min(slides.length - 1, index));
+      slides.forEach((slide, i) => slide.classList.toggle("active", i === current));
+      document.body.classList.toggle("dark-active", slides[current].classList.contains("dark"));
+      progress.style.width = (((current + 1) / slides.length) * 100) + "%";
+      count.textContent = pad(current + 1) + " / " + pad(slides.length);
+      document.title = "Medusa Presentation - " + (slides[current].dataset.title || ("Slide " + (current + 1)));
+    }
+
+    prev.addEventListener("click", () => show(current - 1));
+    next.addEventListener("click", () => show(current + 1));
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        show(current + 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        show(current - 1);
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        show(0);
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        show(slides.length - 1);
+      }
+    });
+
+    let startX = null;
+    document.addEventListener("touchstart", (event) => {
+      startX = event.changedTouches[0].clientX;
+    }, { passive: true });
+
+    document.addEventListener("touchend", (event) => {
+      if (startX === null) return;
+      const delta = event.changedTouches[0].clientX - startX;
+      startX = null;
+      if (Math.abs(delta) < 48) return;
+      show(current + (delta < 0 ? 1 : -1));
+    }, { passive: true });
+
+    const requested = Number(new URLSearchParams(window.location.search).get("slide"));
+    show(Number.isFinite(requested) && requested > 0 ? requested - 1 : 0);
+  </script>
+</body>
+</html>

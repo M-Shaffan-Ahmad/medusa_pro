@@ -1,0 +1,67 @@
+{
+  "step": 800,
+  "reason": "validation_improved",
+  "metrics": {
+    "loss": 3.8113918866864394,
+    "score": 0.4101215195271023,
+    "tokens": 21406,
+    "head_top1": [
+      0.4037672510257367,
+      0.2207282913165266,
+      0.14715781600598354,
+      0.10690881857330088
+    ],
+    "head_top5": [
+      0.6512495337560612,
+      0.4444444444444444,
+      0.33152580403889303,
+      0.25912750421269426
+    ],
+    "head_top10": [
+      0.7265945542707944,
+      0.5365079365079365,
+      0.42539267015706805,
+      0.34974723834487925
+    ]
+  },
+  "args": {
+    "init_medusa_dir": "../llama32_1b_medusa_init",
+    "output_dir": "../llama32_1b_medusa_heads_code",
+    "data_path": "../medusa_training_local/code_corpus.jsonl",
+    "seq_len": 768,
+    "min_seq_len": 32,
+    "max_samples": 0,
+    "val_ratio": 0.03,
+    "val_samples": 256,
+    "no_pack": false,
+    "seed": 42,
+    "epochs": 1.0,
+    "max_steps": 2000,
+    "micro_batch_size": 1,
+    "grad_accum": 24,
+    "learning_rate": 3e-05,
+    "min_learning_rate_ratio": 0.1,
+    "warmup_ratio": 0.03,
+    "weight_decay": 0.0,
+    "grad_clip": 1.0,
+    "head_loss_weights": "1.0,0.85,0.70,0.55",
+    "gt_loss_weight": 0.0,
+    "freeze_legacy_lm_heads": true,
+    "loss_token_chunk_size": 64,
+    "argmax_token_chunk_size": 64,
+    "eval_every": 40,
+    "eval_batches": 8,
+    "min_save_improvement": 0.0001,
+    "keep_initial_if_worse": true,
+    "checkpoint_dir": "../medusa_training_local/llama32_code_checkpoints",
+    "checkpoint_every": 40,
+    "keep_checkpoints": 8,
+    "resume_checkpoint": "latest",
+    "dtype": "fp16",
+    "save_dtype": "train",
+    "device": "cuda:0",
+    "num_workers": 0,
+    "log_every": 10
+  },
+  "saved_at": "2026-05-11 14:37:28"
+}

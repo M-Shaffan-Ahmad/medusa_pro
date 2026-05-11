@@ -1,0 +1,4 @@
+category,mode,tokens,prompt_tokens,total_s,tps,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,text
+long_context_4096t,base_transformers,64,4020,1.7505853520001438,36.55919999951807,2747.0439453125,2864.0,131072,0.031158447265625,"Here are the most important optimization bottlenecks in five bullets:
+
+• **Cache Locality**: Cache locality is the most critical optimization bottleneck in both CPU and GPU programs. It refers to the ability of the CPU or GPU to access data in the cache hierarchy efficiently. Poor cache locality can lead to significant performance degradation, especially"

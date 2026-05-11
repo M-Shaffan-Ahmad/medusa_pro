@@ -74,6 +74,15 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated loss weights for Medusa heads.",
     )
     parser.add_argument(
+        "--draft-head-type",
+        choices=("config", "medusa", "hydra"),
+        default="config",
+        help=(
+            "Draft-head family to train. 'config' keeps the loaded model setting; "
+            "'hydra' enables the sequential-conditioning scaffold."
+        ),
+    )
+    parser.add_argument(
         "--gt-loss-weight",
         type=float,
         default=0.0,
@@ -391,16 +400,23 @@ def split_texts(texts: list[str], val_ratio: float, val_samples: int) -> tuple[l
 def prepare_model(args: argparse.Namespace, device: torch.device, dtype: torch.dtype) -> MedusaModel:
     model = MedusaModel.from_pretrained(args.init_medusa_dir, torch_dtype=dtype)
     model.to(device)
+    if args.draft_head_type != "config":
+        model.draft_head_type = args.draft_head_type
+        model.config.draft_head_type = args.draft_head_type
     # Keep the frozen verifier cheap, but train the small Medusa heads as fp32
     # master weights.  This avoids fp16-gradient unscale failures and is more
     # stable for gentle fine-tuning from an already-good head folder.
     model.medusa_head.to(device=device, dtype=torch.float32)
+    if hasattr(model, "hydra_prefix_scale"):
+        model.hydra_prefix_scale.data = model.hydra_prefix_scale.data.to(device=device, dtype=torch.float32)
     model.config.use_cache = False
     model.eval()
     for param in model.parameters():
         param.requires_grad_(False)
     for param in model.medusa_head.parameters():
         param.requires_grad_(True)
+    if getattr(model, "draft_head_type", "medusa") == "hydra" and hasattr(model, "hydra_prefix_scale"):
+        model.hydra_prefix_scale.requires_grad_(True)
     if args.freeze_legacy_lm_heads and not getattr(model, "medusa_head_uses_base_lm_head", False):
         for head in model.medusa_head:
             if isinstance(head, torch.nn.Sequential) and len(head) > 0:
@@ -412,7 +428,58 @@ def prepare_model(args: argparse.Namespace, device: torch.device, dtype: torch.d
     return model
 
 
-def compute_head_logits(model: MedusaModel, head_idx: int, hidden: torch.Tensor) -> torch.Tensor:
+def draft_parameters(model: MedusaModel) -> list[torch.nn.Parameter]:
+    params = list(model.medusa_head.parameters())
+    if getattr(model, "draft_head_type", "medusa") == "hydra" and hasattr(model, "hydra_prefix_scale"):
+        params.append(model.hydra_prefix_scale)
+    return params
+
+
+def draft_state_dict(model: MedusaModel) -> dict[str, torch.Tensor]:
+    state = {
+        key: value
+        for key, value in model.medusa_head.state_dict().items()
+    }
+    if hasattr(model, "hydra_prefix_scale"):
+        state["hydra_prefix_scale"] = model.hydra_prefix_scale.detach()
+    return state
+
+
+def load_draft_state_dict(model: MedusaModel, state: dict[str, torch.Tensor], strict: bool = True) -> None:
+    head_state = {
+        key: value
+        for key, value in state.items()
+        if not str(key).startswith("hydra_")
+    }
+    model.medusa_head.load_state_dict(head_state, strict=strict)
+    if "hydra_prefix_scale" in state and hasattr(model, "hydra_prefix_scale"):
+        with torch.no_grad():
+            model.hydra_prefix_scale.copy_(
+                state["hydra_prefix_scale"].to(
+                    device=model.hydra_prefix_scale.device,
+                    dtype=model.hydra_prefix_scale.dtype,
+                )
+            )
+
+
+def compute_head_logits(
+    model: MedusaModel,
+    head_idx: int,
+    hidden: torch.Tensor,
+    prev_token_ids: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if (
+        getattr(model, "draft_head_type", "medusa") == "hydra"
+        and head_idx > 0
+        and prev_token_ids is not None
+        and hasattr(model, "hydra_prefix_scale")
+    ):
+        prev_embed = model.get_input_embeddings()(prev_token_ids.to(hidden.device))
+        prefix_scale = model.hydra_prefix_scale[head_idx].to(
+            device=hidden.device,
+            dtype=hidden.dtype,
+        )
+        hidden = hidden + prev_embed.to(hidden.dtype) * prefix_scale.view(1, 1, -1)
     if not getattr(model, "medusa_head_uses_base_lm_head", False):
         if hidden.is_cuda:
             with torch.autocast("cuda", enabled=False):
@@ -539,8 +606,16 @@ def backward_train_batch(
             target_distill = greedy[:, head_idx + 1 + start : head_idx + 1 + end]
             target_gt = input_ids[:, head_idx + 2 + start : head_idx + 2 + end]
             hidden_chunk = hidden[:, start:end, :]
+            prev_token_ids = None
+            if getattr(model, "draft_head_type", "medusa") == "hydra" and head_idx > 0:
+                prev_token_ids = greedy[:, head_idx + start : head_idx + end]
             with torch.autocast("cuda", dtype=train_dtype, enabled=autocast_enabled):
-                logits = compute_head_logits(model, head_idx, hidden_chunk)
+                logits = compute_head_logits(
+                    model,
+                    head_idx,
+                    hidden_chunk,
+                    prev_token_ids=prev_token_ids,
+                )
                 flat_logits = torch.nan_to_num(
                     logits[chunk_mask].float(),
                     nan=0.0,
@@ -634,8 +709,16 @@ def evaluate(
                 target_distill = greedy[:, head_idx + 1 + start : head_idx + 1 + end]
                 target_gt = input_ids[:, head_idx + 2 + start : head_idx + 2 + end]
                 hidden_chunk = hidden[:, start:end, :]
+                prev_token_ids = None
+                if getattr(model, "draft_head_type", "medusa") == "hydra" and head_idx > 0:
+                    prev_token_ids = greedy[:, head_idx + start : head_idx + end]
                 with torch.autocast("cuda", dtype=train_dtype, enabled=autocast_enabled):
-                    logits = compute_head_logits(model, head_idx, hidden_chunk)
+                    logits = compute_head_logits(
+                        model,
+                        head_idx,
+                        hidden_chunk,
+                        prev_token_ids=prev_token_ids,
+                    )
                 flat_logits = torch.nan_to_num(
                     logits[chunk_mask].float(),
                     nan=0.0,
@@ -696,6 +779,7 @@ def make_output_config(model: MedusaModel, args: argparse.Namespace) -> MedusaCo
         base_model_name_or_path=getattr(model.config, "_name_or_path", None)
         or getattr(model, "base_model_name_or_path", None),
         version=version,
+        draft_head_type=getattr(model, "draft_head_type", "medusa"),
     )
     if uses_base_lm_head:
         config.medusa_head_uses_base_lm_head = True
@@ -720,7 +804,7 @@ def save_head_folder(
     config = make_output_config(model, args)
     config.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-    state = convert_state_dtype(model.medusa_head.state_dict(), save_dtype)
+    state = convert_state_dtype(draft_state_dict(model), save_dtype)
     save_file(state, str(output_dir / "medusa_lm_head.safetensors"))
     metadata = {
         "step": step,
@@ -796,7 +880,7 @@ def save_training_checkpoint(
         "best_step": best_step,
         "medusa_head": {
             key: value.detach().cpu()
-            for key, value in model.medusa_head.state_dict().items()
+            for key, value in draft_state_dict(model).items()
         },
         "optimizer": optimizer.state_dict(),
         "scaler": scaler.state_dict() if scaler is not None else None,
@@ -833,8 +917,10 @@ def load_training_checkpoint(
     device: torch.device,
 ) -> tuple[int, float, int]:
     state = torch.load(checkpoint_dir / "trainer_state.pt", map_location="cpu")
-    model.medusa_head.load_state_dict(state["medusa_head"], strict=True)
+    load_draft_state_dict(model, state["medusa_head"], strict=True)
     model.medusa_head.to(device=device, dtype=torch.float32)
+    if hasattr(model, "hydra_prefix_scale"):
+        model.hydra_prefix_scale.data = model.hydra_prefix_scale.data.to(device=device, dtype=torch.float32)
     optimizer.load_state_dict(state["optimizer"])
     for opt_state in optimizer.state.values():
         for key, value in opt_state.items():
@@ -925,12 +1011,14 @@ def main() -> None:
 
     model = prepare_model(args, device, train_dtype)
     head_weights = parse_head_weights(args.head_loss_weights, int(model.medusa))
-    trainable_params = sum(param.numel() for param in model.medusa_head.parameters() if param.requires_grad)
+    draft_params = [param for param in draft_parameters(model) if param.requires_grad]
+    trainable_params = sum(param.numel() for param in draft_params)
     print(f"device={device} dtype={train_dtype} trainable_head_params={trainable_params:,}")
+    print(f"draft_head_type={getattr(model, 'draft_head_type', 'medusa')}")
     print(f"train_windows={len(train_dataset)} val_windows={len(val_dataset)} seq_len={args.seq_len}")
 
     optimizer = torch.optim.AdamW(
-        [param for param in model.medusa_head.parameters() if param.requires_grad],
+        draft_params,
         lr=args.learning_rate,
         weight_decay=args.weight_decay,
     )
@@ -1036,7 +1124,7 @@ def main() -> None:
             if scaler is not None:
                 scaler.unscale_(optimizer)
             if args.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(model.medusa_head.parameters(), args.grad_clip)
+                torch.nn.utils.clip_grad_norm_(draft_parameters(model), args.grad_clip)
             if scaler is not None:
                 scaler.step(optimizer)
                 scaler.update()

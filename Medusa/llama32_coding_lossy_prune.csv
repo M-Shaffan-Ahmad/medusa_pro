@@ -1,0 +1,72 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,packed_kv_qjl_sidecar_mb_est,packed_kv_qjl_sidecar_pct_of_fp16_kv,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+python_grouping,medusa_base,48,31,1.2,1.5,64.0,0.9138557090000177,0.9138210940000135,52.524703328191464,1.0,1.0,4963.37841796875,4986.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,63,0,1344,32,medusa,0,32,32,48,32768,239,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1344,0,fixed,0,2048,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+python_grouping,packed_kv_qjl_strict_nb16,48,31,1.2,1.411764705882353,16.0,3.193060883999806,3.193030832000204,15.032597793710883,0.2862005273934117,1.0,4966.40234375,4984.0,131072,0.00060272216796875,2.46875,1.446533203125,1.7066666666666668,0.0096435546875,0.00390625,0,0,63,0,1428,34,medusa,0,0,34,48,32768,239,0,63,4,131072,0,1,0,0,0,34,0,0,34,34,276,0,fixed,0,544,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str"
+cuda_kernel,medusa_base,48,28,1.2,1.263157894736842,64.0,1.091784903000189,1.091758961999858,43.96470391566835,1.0,1.0,4963.48583984375,4986.0,131072,0.000579833984375,2.375,1.3916015625,1.7066666666666668,0.00927734375,0.00390625,0,0,63,0,1596,38,medusa,0,38,38,48,32768,236,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1596,0,fixed,0,2432,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_vectors(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x"
+cuda_kernel,packed_kv_qjl_strict_nb16,43,28,1.075,1.075,16.0,1.749872810999932,1.749846900999728,24.573214538620356,0.5589305135718845,0.5277777777777778,4966.5078125,4984.0,131072,0.00054168701171875,2.21875,1.300048828125,1.7066666666666668,0.0086669921875,0.00390625,0,0,63,0,1680,40,medusa,0,0,40,43,32768,236,0,63,4,131072,0,1,0,0,0,40,0,0,40,40,315,0,fixed,0,640,"Here is a minimal CUDA C++ vector addition kernel:
+```c
+__global__ void add_kernel(float* a, float* b, float* c, int n) {
+    int idx = blockIdx.x *"
+debugging,medusa_base,48,32,1.2,1.263157894736842,64.0,1.0732677989999502,1.0732457359999898,44.72322755301655,1.0,1.0,4963.60888671875,4986.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,63,0,1596,38,medusa,0,38,38,48,32768,240,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1596,0,fixed,0,2432,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when the function"
+debugging,packed_kv_qjl_strict_nb16,46,32,1.15,1.15,16.0,1.255845706999935,1.2558197419998578,36.628703465403,0.8190084989278109,1.0,4966.63134765625,4984.0,131072,0.0005950927734375,2.4375,1.42822265625,1.7066666666666668,0.009521484375,0.00390625,0,0,63,0,1680,40,medusa,0,0,40,46,32768,240,0,63,4,131072,0,1,0,0,0,40,0,0,40,40,304,0,fixed,0,640,"## Step 1: Understanding the Problem
+The problem is that the function `my_function` is modifying the default list argument across calls, which is not allowed in Python. This is because the default argument is evaluated only once when"
+systems_code,medusa_base,48,32,1.2,1.2,64.0,1.1267755419999048,1.1267495740003142,42.59943370336668,1.0,1.0,4963.72509765625,4986.0,131072,0.0006103515625,2.5,1.46484375,1.7066666666666668,0.009765625,0.00390625,0,0,63,0,1680,40,medusa,0,40,40,48,32768,240,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1680,0,fixed,0,2560,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+// Function to perform some work
+"
+systems_code,packed_kv_qjl_strict_nb16,42,32,1.05,1.05,16.0,1.0850555040001382,1.0850276249998387,38.70769729766253,0.9086434708779572,1.0,4966.74755859375,4984.0,131072,0.0005645751953125,2.3125,1.35498046875,1.7066666666666668,0.009033203125,0.00390625,0,0,63,0,1680,40,medusa,0,0,40,42,32768,240,0,63,4,131072,0,1,0,0,0,40,0,0,40,40,323,0,fixed,0,640,"Here is a concise C++ example that uses std::thread to split work across workers and joins them safely:
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+
+//"
+long_context_4096t,medusa_base,48,4050,1.2,1.6,64.0,1.7725349889997233,1.772512696999911,27.079860368278176,1.0,1.0,4963.87890625,4988.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,63,0,1260,30,medusa,0,30,30,48,32768,4258,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1260,0,fixed,0,1920,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
+long_context_4096t,packed_kv_qjl_strict_nb16,48,4050,1.2,1.263157894736842,16.0,5.680475484999988,5.680434915000205,8.449996857965509,0.31203989766003315,1.0,4967.3916015625,4984.0,131072,0.0312652587890625,128.0625,75.03662109375,1.7066666666666668,0.500244140625,0.00390625,0,0,63,0,1596,38,medusa,0,0,38,48,32768,4258,0,63,4,131072,0,1,0,0,0,38,0,0,38,38,319,0,fixed,0,608,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+   "
