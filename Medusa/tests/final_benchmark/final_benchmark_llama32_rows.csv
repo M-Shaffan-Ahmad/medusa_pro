@@ -1,0 +1,167 @@
+model,model_dir,prompt_type,requested_context_tokens,category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,turbo_vq_kv_mb_est,polar_kv_mb_est,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,polar_algorithmic_bits_per_channel,polar_angle_bytes_per_token_head,polar_radius_bytes_per_token_head,polar_transfer_reduction,turbo_vq_actual_bits_per_channel_est,turbo_vq_compressed_kv_mb_est,turbo_vq_key_algorithmic_bits,turbo_vq_key_qidx_bytes_per_token_head,turbo_vq_transfer_reduction,turbo_vq_value_bits,turbo_vq_value_qidx_bytes_per_token_head,text
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,0,technical_ctx0,medusa_base,64,25,1.3333333333333333,1.3333333333333333,64.0,1.5031750169999896,1.5031497069999773,42.57654582879516,1.0,1.0,3429.95068359375,3800.0,131072,0.00067901611328125,2.78125,1.629638671875,0.673583984375,0,0,63,0,2016,48,medusa,0,48,48,64,16384,273,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,1.629638671875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.629638671875,9.0,64,1.7066666666666668,8,64,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its workload. In other"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,0,technical_ctx0,turbo_fast_24,62,25,1.2916666666666667,1.2916666666666667,25.0,1.1967416439999852,1.1967146279999952,51.80733896145822,1.216804650376784,1.0,3426.7509765625,3798.0,131072,0.00066375732421875,2.71875,1.593017578125,0.658447265625,0,0,24,0,912,48,medusa,0,48,48,62,16384,225,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,1.593017578125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.593017578125,9.0,64,1.7066666666666668,8,64,"Strong scaling and weak scaling are two fundamental concepts in distributed systems that help manage the performance and scalability of applications.
+
+**Strong Scaling:**
+
+Strong scaling refers to the ability of a distributed system to scale up its resources (e.g., CPU, memory, network bandwidth) to meet the increasing demands of its workload."
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,0,general_ctx0,medusa_base,55,26,1.1458333333333333,1.1458333333333333,64.0,1.32714517200003,1.3271234040000195,41.442338909400604,1.0,1.0,3429.94970703125,3800.0,131072,0.00061798095703125,2.53125,1.483154296875,0.613037109375,0,0,63,0,2016,48,medusa,0,48,48,55,16384,274,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,1.483154296875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.483154296875,9.0,64,1.7066666666666668,8,64,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,0,general_ctx0,turbo_fast_24,55,26,1.1458333333333333,1.1458333333333333,25.0,1.1911606639999945,1.191138432999992,46.17345221534301,1.1141613487666648,1.0,3426.7548828125,3798.0,131072,0.00061798095703125,2.53125,1.483154296875,0.613037109375,0,0,24,0,912,48,medusa,0,48,48,55,16384,226,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,1.483154296875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.483154296875,9.0,64,1.7066666666666668,8,64,"Here's some practical advice to help you overcome procrastination on a programming assignment:
+
+1. **Break it down into smaller tasks**: Divide the assignment into smaller, manageable tasks. This will make the task less overwhelming and more achievable. Create a list of tasks, and focus on"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,0,coding_ctx0,medusa_base,64,31,1.3333333333333333,1.5609756097560976,64.0,1.2047026700000174,1.2046718839999926,53.125141658396984,1.0,1.0,3429.95166015625,3800.0,131072,0.00072479248046875,2.96875,1.739501953125,0.718994140625,0,0,63,0,1722,41,medusa,0,41,41,64,16384,279,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1722,0,fixed,0,2624,1.739501953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.739501953125,9.0,64,1.7066666666666668,8,64,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str]): A list of strings to be grouped.
+
+    Returns:
+    Dict[str,"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,0,coding_ctx0,turbo_fast_24,64,31,1.3333333333333333,1.4883720930232558,25.0,1.0737837199999944,1.0737605819999771,59.60231917094099,1.1219230163035285,1.0,3426.7744140625,3798.0,131072,0.00072479248046875,2.96875,1.739501953125,0.718994140625,0,0,24,0,817,43,medusa,0,43,43,64,16384,231,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,817,0,fixed,0,1075,1.739501953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.739501953125,9.0,64,1.7066666666666668,8,64,"```python
+from typing import Dict, List, Tuple
+
+def group_strings_by_first_letter(strings: List[str]) -> Dict[str, List[str]]:
+    """"""
+    Groups strings by their first letter.
+
+    Args:
+    strings (List[str]): A list of strings to be grouped.
+
+    Returns:
+    Dict[str,"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,1024,technical_ctx1024,medusa_base,58,952,1.2083333333333333,1.2083333333333333,64.0,1.5220675790000087,1.5220444040000416,38.106060992446686,1.0,1.0,3484.1220703125,3800.0,131072,0.0077056884765625,31.5625,18.49365234375,7.64404296875,0,0,63,0,2016,48,medusa,0,48,48,58,16384,1200,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,18.49365234375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,18.49365234375,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When data is not found in the cache, it needs to be retrieved from slower storage, leading to significant performance degradation.
+2. **Network Latency**: High network latency can cause delays in data transfer, leading"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,1024,technical_ctx1024,turbo_fast_24,58,952,1.2083333333333333,1.2083333333333333,25.0,1.3873176869999497,1.387283307999951,41.80729514479412,1.097129801820269,1.0,3485.34716796875,3798.0,131072,0.0077056884765625,31.5625,18.49365234375,7.64404296875,0,0,24,0,912,48,medusa,0,48,48,58,16384,1152,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,18.49365234375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,18.49365234375,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When data is not found in the cache, it needs to be retrieved from slower storage, leading to significant performance degradation.
+2. **Network Latency**: High network latency can cause delays in data transfer, leading"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,1024,general_ctx1024,medusa_base,54,1010,1.125,1.125,64.0,1.5452944440000351,1.5452712270000006,34.9447965788446,1.0,1.0,3486.59228515625,3800.0,131072,0.00811767578125,33.25,19.482421875,8.052734375,0,0,63,0,2016,48,medusa,0,48,48,54,16384,1258,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,19.482421875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.482421875,9.0,64,1.7066666666666668,8,64,"Congratulations on taking the first step towards balancing your responsibilities! Here's a practical, encouraging plan to help you achieve a better work-life balance:
+
+**Week 1-2: Assess and Prioritize**
+
+1. Take a week to reflect on your current situation, including:
+"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,1024,general_ctx1024,turbo_fast_24,54,1010,1.125,1.125,25.0,1.402157740000007,1.4021338169999922,38.5120721153668,1.1020831679037961,1.0,3487.8173828125,3800.0,131072,0.00811767578125,33.25,19.482421875,8.052734375,0,0,24,0,912,48,medusa,0,48,48,54,16384,1210,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,19.482421875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.482421875,9.0,64,1.7066666666666668,8,64,"Congratulations on taking the first step towards balancing your responsibilities! Here's a practical, encouraging plan to help you achieve a better work-life balance:
+
+**Week 1-2: Assess and Prioritize**
+
+1. Take a week to reflect on your current situation, including:
+"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,1024,coding_ctx1024,medusa_base,64,1023,1.3333333333333333,1.5238095238095237,64.0,1.3741726479999556,1.3741500979999728,46.57347829848675,1.0,1.0,3487.20166015625,3800.0,131072,0.00829315185546875,33.96875,19.903564453125,8.226806640625,0,0,63,0,1764,42,medusa,0,42,42,64,16384,1271,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1764,0,fixed,0,2688,19.903564453125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.903564453125,9.0,64,1.7066666666666668,8,64,"Here is a compact Python module that validates inputs, times two implementations, and reports the faster one:
+```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+def validate_inputs(inputs):
+    # Simple validation function
+    if not isinstance(inputs, list) or not"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,1024,coding_ctx1024,turbo_fast_24,64,1023,1.3333333333333333,1.4545454545454546,25.0,1.299394781999979,1.299372519999963,49.25369940419003,1.0575482270945258,1.0,3488.4267578125,3800.0,131072,0.00829315185546875,33.96875,19.903564453125,8.226806640625,0,0,24,0,836,44,medusa,0,44,44,64,16384,1223,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,836,0,fixed,0,1100,19.903564453125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.903564453125,9.0,64,1.7066666666666668,8,64,"Here is a compact Python module that validates inputs, times two implementations, and reports the faster one:
+```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+def validate_inputs(inputs):
+    # Simple validation function
+    if not isinstance(inputs, list) or not"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,4096,technical_ctx4096,medusa_base,58,3768,1.2083333333333333,1.2083333333333333,64.0,2.1891283090000115,2.1890955549999944,26.494563960252407,1.0,1.0,3659.3740234375,3980.0,131072,0.0291900634765625,119.5625,70.05615234375,28.95654296875,0,0,63,0,2016,48,medusa,0,48,48,58,16384,4016,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,70.05615234375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,70.05615234375,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When the CPU doesn't find the data it needs in the cache, it has to access slower main memory, leading to significant performance degradation.
+2. **Network Latency**: High network latency can cause delays in"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,4096,technical_ctx4096,turbo_fast_24,56,3768,1.1666666666666667,1.1666666666666667,25.0,2.0261193139999705,2.0260962529999915,27.639043571153092,1.0431967709533794,1.0,3660.59912109375,3978.0,131072,0.0291748046875,119.5,70.01953125,28.94140625,0,0,24,0,912,48,medusa,0,48,48,56,16384,3968,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,70.01953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,70.01953125,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When the CPU doesn't find the data it needs in the cache, it has to access slower main memory, leading to significant performance degradation.
+2. **Network Latency**: High network latency can cause"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,4096,general_ctx4096,medusa_base,53,3962,1.1041666666666667,1.1041666666666667,64.0,2.260442617000024,2.260418802000004,23.446735431992362,1.0,1.0,3671.22216796875,4082.0,131072,0.03063201904296875,125.46875,73.516845703125,30.386962890625,0,0,63,0,2016,48,medusa,0,48,48,53,16384,4210,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,73.516845703125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,73.516845703125,9.0,64,1.7066666666666668,8,64,"Congratulations on taking the first step towards balancing your responsibilities! Here's a practical, encouraging plan to help you achieve your goals:
+
+**Week 1-2: Assess and Prioritize**
+
+1. Take a week to review your schedule, finances, and goals. Make"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,4096,general_ctx4096,turbo_fast_24,52,3962,1.0833333333333333,1.0833333333333333,25.0,2.083021938999991,2.0829937579999864,24.963731310945267,1.0646996629169538,1.0,3672.447265625,4080.0,131072,0.0306243896484375,125.4375,73.49853515625,30.37939453125,0,0,24,0,912,48,medusa,0,48,48,52,16384,4162,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,73.49853515625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,73.49853515625,9.0,64,1.7066666666666668,8,64,"Congratulations on taking the first step towards balancing your responsibilities! Here's a practical, encouraging plan to help you achieve your goals:
+
+**Week 1-2: Assess and Prioritize**
+
+1. Take a week to review your schedule, finances, and goals."
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,4096,coding_ctx4096,medusa_base,64,3999,1.3333333333333333,1.5609756097560976,64.0,2.0181750770000235,2.0181529540000156,31.71181763632455,1.0,1.0,3673.2548828125,4088.0,131072,0.03099822998046875,126.96875,74.395751953125,30.750244140625,0,0,63,0,1722,41,medusa,0,41,41,64,16384,4247,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1722,0,fixed,0,2624,74.395751953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,74.395751953125,9.0,64,1.7066666666666668,8,64,"Here is a compact Python module that validates inputs, times two implementations, and reports the faster one:
+```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+def validate_inputs(inputs):
+    # Validate inputs
+    if not isinstance(inputs, list) or len(inputs"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,4096,coding_ctx4096,turbo_fast_24,64,3999,1.3333333333333333,1.4545454545454546,25.0,1.9755890069999964,1.9755677429999992,32.39540196530366,1.0215561383714598,1.0,3674.47998046875,4086.0,131072,0.03099822998046875,126.96875,74.395751953125,30.750244140625,0,0,24,0,836,44,medusa,0,44,44,64,16384,4199,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,836,0,fixed,0,1100,74.395751953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,74.395751953125,9.0,64,1.7066666666666668,8,64,"Here is a compact Python module that validates inputs, times two implementations, and reports the faster one:
+```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+def validate_inputs(inputs):
+    # Validate inputs
+    if not isinstance(inputs, list) or len(inputs"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,8192,technical_ctx8192,medusa_base,59,7530,1.2291666666666667,1.2291666666666667,64.0,3.1681504370000084,3.1681270009999594,18.622853040990186,1.0,1.0,3896.81201171875,4276.0,131072,0.05789947509765625,237.15625,138.958740234375,57.436279296875,0,0,63,0,2016,48,medusa,0,48,48,59,16384,7778,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,138.958740234375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,138.958740234375,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When the CPU doesn't find the data it needs in the cache, it has to access slower main memory, leading to significant performance degradation.
+2. **Cache Overflows**: When the cache is full and the CPU"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,technical,8192,technical_ctx8192,turbo_fast_24,57,7530,1.1875,1.1875,25.0,2.9953133220000154,2.995279083000014,19.0297287370058,1.0218481934599415,1.0,3898.037109375,4272.0,131072,0.05788421630859375,237.09375,138.922119140625,57.421142578125,0,0,24,0,912,48,medusa,0,48,48,57,16384,7730,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,138.922119140625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,138.922119140625,9.0,64,1.7066666666666668,8,64,"**Most Important Performance Bottlenecks:**
+
+1. **Cache Misses**: When the CPU doesn't find the data it needs in the cache, it has to access slower main memory, leading to significant performance degradation.
+2. **Cache Overflows**: When the cache is full and"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,8192,general_ctx8192,medusa_base,56,7898,1.1666666666666667,1.1666666666666667,64.0,3.2358006829999795,3.2357689009999717,17.306381166865076,1.0,1.0,3919.10986328125,4394.0,131072,0.0606842041015625,248.5625,145.64208984375,60.19873046875,0,0,63,0,2016,48,medusa,0,48,48,56,16384,8146,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,2016,0,fixed,0,3072,145.64208984375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,145.64208984375,9.0,64,1.7066666666666668,8,64,"Here's a balanced plan to help the student achieve their goals:
+
+**Weekly Plan:**
+
+1. **Set clear goals**: Identify short-term and long-term goals, and prioritize them.
+2. **Create a schedule**: Allocate time for lectures, project deadlines, sleep, exercise,"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,general,8192,general_ctx8192,turbo_fast_24,54,7898,1.125,1.125,25.0,3.0588366929999893,3.058810446999985,17.653770181185738,1.0200728858893837,1.0,3920.3349609375,4390.0,131072,0.0606689453125,248.5,145.60546875,60.18359375,0,0,24,0,912,48,medusa,0,48,48,54,16384,8098,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,912,0,fixed,0,1200,145.60546875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,145.60546875,9.0,64,1.7066666666666668,8,64,"Here's a balanced plan to help the student achieve their goals:
+
+**Weekly Plan:**
+
+1. **Set clear goals**: Identify short-term and long-term goals, and prioritize them.
+2. **Create a schedule**: Allocate time for lectures, project deadlines, sleep,"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,8192,coding_ctx8192,medusa_base,64,7967,1.3333333333333333,1.8823529411764706,64.0,2.6953007179999986,2.69527640299998,23.745031332715296,1.0,1.0,3923.982421875,4404.0,131072,0.06127166748046875,250.96875,147.052001953125,60.781494140625,0,0,63,0,1428,34,medusa,0,34,34,64,16384,8215,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1428,0,fixed,0,2176,147.052001953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,147.052001953125,9.0,64,1.7066666666666668,8,64,"import time
+import random
+import numpy as np
+
+def validate_inputs(inputs):
+    # Validate inputs
+    if not isinstance(inputs, list) or len(inputs)!= 2:
+        raise ValueError(""Invalid input type"")
+    if not all(isinstance(x, (int, float)) for x in inputs):
+        raise"
+Llama-3.2-1B,llama32_1b_medusa_heads_code,coding,8192,coding_ctx8192,turbo_fast_24,64,7967,1.3333333333333333,1.8285714285714285,25.0,2.552151790000039,2.5521111310000038,25.076878362316773,1.0560895039867348,1.0,3925.20751953125,4400.0,131072,0.06127166748046875,250.96875,147.052001953125,60.781494140625,0,0,24,0,665,35,medusa,0,35,35,64,16384,8167,0,24,3,131072,0,0,0,0,16384,0,0,0,0,0,665,0,fixed,0,875,147.052001953125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,147.052001953125,9.0,64,1.7066666666666668,8,64,"import time
+import random
+import numpy as np
+
+def validate_inputs(inputs):
+    # Validate inputs
+    if not isinstance(inputs, list) or len(inputs)!= 2:
+        raise ValueError(""Invalid input type"")
+    if not all(isinstance(x, (int, float)) for x in inputs):
+        raise"

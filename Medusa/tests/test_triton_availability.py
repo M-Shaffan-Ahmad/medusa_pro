@@ -16,7 +16,6 @@ class TritonAvailabilityTest(unittest.TestCase):
             "turbo_qjl_select_paths_triton",
             "turbo_vq_append_triton",
             "compressed_kv_attention_turbo_vq_triton",
-            "hybrid_kv_attention_turbo_vq_triton",
         ):
             self.assertTrue(callable(getattr(tk, name, None)), f"{name} is not callable")
 

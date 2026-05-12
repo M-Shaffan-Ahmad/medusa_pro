@@ -161,6 +161,31 @@ def _medusa_head_module_state_dict(state_dict):
 
 def _load_medusa_head_into_model(model, state_dict):
     module_state_dict = _medusa_head_module_state_dict(state_dict)
+    expected_weight = module_state_dict.get("0.0.linear.weight")
+    current_weight = None
+    try:
+        current_weight = model.medusa_head[0][0].linear.weight
+    except Exception:
+        current_weight = None
+    if (
+        expected_weight is not None
+        and current_weight is not None
+        and tuple(current_weight.shape) != tuple(expected_weight.shape)
+    ):
+        # Quantized base-model loads can accidentally pack the Medusa heads
+        # before the sidecar is restored. Rebuild only the draft heads so the
+        # trained fp16/fp32 sidecar can load into ordinary Linear layers.
+        model.medusa_head = nn.ModuleList(
+            [
+                _make_medusa_head(
+                    model.hidden_size,
+                    model.vocab_size,
+                    model.medusa_num_layers,
+                    model.medusa_head_uses_base_lm_head,
+                )
+                for _ in range(model.medusa)
+            ]
+        )
     incompatible = model.medusa_head.load_state_dict(module_state_dict, strict=False)
     if "hydra_prefix_scale" in state_dict and hasattr(model, "hydra_prefix_scale"):
         with torch.no_grad():
@@ -466,6 +491,7 @@ def resolve_turbo_kv_cache_plan(
     input_length=0,
     max_steps=512,
     max_path_depth=1,
+    tree_node_count=0,
     turbo_kv_max_length=2048,
     turbo_kv_use_model_context=False,
     packed_kv_qjl_requested=False,
@@ -480,8 +506,9 @@ def resolve_turbo_kv_cache_plan(
     input_length = max(0, int(input_length))
     max_steps = max(0, int(max_steps))
     max_path_depth = max(1, int(max_path_depth))
+    tree_node_count = max(0, int(tree_node_count))
     worst_case_new_tokens = int(max_steps * (max_path_depth + 1))
-    required_kv_len = int(input_length + worst_case_new_tokens + 8)
+    required_kv_len = int(input_length + worst_case_new_tokens + tree_node_count + 8)
     requested_kv_len = max(0, int(turbo_kv_max_length or 0))
     model_context_window = infer_model_context_window(config, tokenizer=tokenizer)
 
@@ -502,6 +529,7 @@ def resolve_turbo_kv_cache_plan(
         "effective_kv_qjl_min_len": int(effective_kv_qjl_min_len),
         "use_packed_kv_qjl": bool(use_packed_kv_qjl),
         "worst_case_new_tokens": int(worst_case_new_tokens),
+        "tree_node_count": int(tree_node_count),
     }
 
 
@@ -809,15 +837,21 @@ class MedusaModelABC(nn.Module):
         turbo_kv_max_length=2048,
         turbo_kv_use_model_context=False,
         turbo_kv_quant_mode="polar",
-        turbo_radius_bits=8,
-        turbo_theta_bits=8,
+        turbo_radius_bits=2,
+        turbo_theta_bits=4,
+        turbo_polar_levels=4,
         turbo_vq_bits=4,
         turbo_vq_key_bits=None,
+        turbo_vq_outlier_bits=4,
+        turbo_vq_key_outlier_bits=None,
+        turbo_vq_outlier_channels=0,
+        turbo_vq_outlier_indices=None,
         turbo_vq_residual_dim=128,
         turbo_vq_residual_scale=1.0,
         turbo_hybrid_hot_window=512,
         turbo_runtime_dequant_cache=True,
         turbo_compile_decode=False,
+        turbo_quant_seed=0,
         turbo_qjl_dim=64,
         draft_head_type=None,
         tree_policy="fixed",
@@ -951,23 +985,32 @@ class MedusaModelABC(nn.Module):
                 long-context runs where packed KV-QJL and TurboVQ should be initialized
                 for the larger cache ahead of time.
             turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for the
-                previous polar-inspired cache, "turbo_vq" for strict random-rotation
-                Lloyd-Max TurboQuant KV, or "hybrid_turbo_vq" for exact hot-window KV
-                plus compressed older KV.
-            turbo_radius_bits (int, optional): Radius quantization bits for polar KV.
-            turbo_theta_bits (int, optional): Angle quantization bits for polar KV.
+                recursive PolarQuant cache, or "turbo_vq" for random-rotation Lloyd-Max
+                TurboQuantprod keys plus TurboQuantmse values.
+            turbo_radius_bits (int, optional): Later-level angle bits for recursive
+                PolarQuant.
+            turbo_theta_bits (int, optional): First-level angle bits for recursive
+                PolarQuant.
+            turbo_polar_levels (int, optional): Recursive PolarQuant levels. The paper's
+                practical implementation uses 4.
             turbo_vq_bits (int, optional): Scalar Lloyd-Max bits for "turbo_vq" KV compression.
-            turbo_vq_key_bits (int, optional): Override key-cache Lloyd-Max bits. Set this
-                to `turbo_vq_bits - 1` to test the TurboQuant inner-product bit-budget
-                variant while keeping value-cache quantization at `turbo_vq_bits`.
+            turbo_vq_key_bits (int, optional): Override key-cache Lloyd-Max index bits.
+                For TurboQuantprod, set this to `b - 1` and use a full-head QJL residual
+                to obtain a total b-bit key quantizer while keeping value-cache
+                TurboQuantmse at `turbo_vq_bits`.
             turbo_vq_residual_dim (int, optional): 1-bit QJL residual sketch dimension for
-                TurboQuant key-cache inner-product correction. Set 0 to disable.
+                TurboQuant key-cache inner-product correction. A negative value means the
+                full attention head dimension, matching TurboQuantprod Algorithm 2.
             turbo_vq_residual_scale (float, optional): Multiplier for the residual-QJL
                 correction. `1.0` is the unbiased estimator; lower values can dampen
                 sketch variance during calibration.
-            turbo_hybrid_hot_window (int, optional): Exact recent-KV window for
-                `turbo_kv_quant_mode="hybrid_turbo_vq"`. Older positions remain
-                compressed and are decoded only when the SDPA verifier needs them.
+            turbo_vq_outlier_indices (list, optional): Pre-calibrated per-layer
+                [key_indices, value_indices] channel lists for the outlier-aware
+                TurboQuant KV recipe. If omitted, channels are selected from the
+                first appended prefill batch.
+            turbo_quant_seed (int, optional): Seed for TurboQuant rotations and QJL
+                projections. Defaults to deterministic paper-debuggable matrices;
+                change it or pass fresh values for multi-seed runs.
             turbo_runtime_dequant_cache (bool, optional): Keep an incremental dequantized shadow cache
                 for fast attention when polar compression is enabled. Set False to use the
                 direct compressed-KV Triton attention path instead of materializing FP16 K/V.
@@ -1111,6 +1154,12 @@ class MedusaModelABC(nn.Module):
                 max_path_depth,
                 max((len(path) for path in adaptive_medusa_choices), default=1),
             )
+        max_tree_node_count = int(medusa_buffers["tree_indices"].numel())
+        if adaptive_medusa_buffers is not None:
+            max_tree_node_count = max(
+                max_tree_node_count,
+                int(adaptive_medusa_buffers["tree_indices"].numel()),
+            )
         use_compressed_kv = bool(turbo_quant and turbo_kv_compression)
         requested_kv_quant_mode = str(turbo_kv_quant_mode).lower()
         requested_cache_mode = requested_kv_quant_mode if use_compressed_kv else "fp16"
@@ -1119,6 +1168,29 @@ class MedusaModelABC(nn.Module):
             if turbo_vq_key_bits is None
             else int(turbo_vq_key_bits)
         )
+        effective_turbo_vq_key_outlier_bits = (
+            min(8, max(1, effective_turbo_vq_key_bits + 1))
+            if turbo_vq_key_outlier_bits is None
+            else int(turbo_vq_key_outlier_bits)
+        )
+
+        def _outlier_indices_signature(indices):
+            if indices is None:
+                return None
+            signature = []
+            for layer in indices:
+                layer_sig = []
+                for item in layer:
+                    if item is None:
+                        layer_sig.append(())
+                    elif torch.is_tensor(item):
+                        layer_sig.append(tuple(int(x) for x in item.detach().cpu().flatten().tolist()))
+                    else:
+                        layer_sig.append(tuple(int(x) for x in item))
+                signature.append(tuple(layer_sig))
+            return tuple(signature)
+
+        turbo_vq_outlier_signature = _outlier_indices_signature(turbo_vq_outlier_indices)
         packed_kv_qjl_requested = bool(
             turbo_quant
             and turbo_prune_use_kv_qjl
@@ -1131,6 +1203,7 @@ class MedusaModelABC(nn.Module):
             input_length=int(input_ids.shape[1]),
             max_steps=max_steps,
             max_path_depth=max_path_depth,
+            tree_node_count=max_tree_node_count,
             turbo_kv_max_length=turbo_kv_max_length,
             turbo_kv_use_model_context=turbo_kv_use_model_context,
             packed_kv_qjl_requested=packed_kv_qjl_requested,
@@ -1152,13 +1225,19 @@ class MedusaModelABC(nn.Module):
                 or (
                     getattr(self, "kv_cache_radius_bits", None) == turbo_radius_bits
                     and getattr(self, "kv_cache_theta_bits", None) == turbo_theta_bits
+                    and getattr(self, "kv_cache_polar_levels", None) == int(turbo_polar_levels)
                     and getattr(self, "kv_cache_vq_bits", None) == turbo_vq_bits
                     and getattr(self, "kv_cache_vq_key_bits", None) == effective_turbo_vq_key_bits
+                    and getattr(self, "kv_cache_vq_outlier_bits", None) == int(turbo_vq_outlier_bits)
+                    and getattr(self, "kv_cache_vq_key_outlier_bits", None) == int(effective_turbo_vq_key_outlier_bits)
+                    and getattr(self, "kv_cache_vq_outlier_channels", None) == int(turbo_vq_outlier_channels)
+                    and getattr(self, "kv_cache_vq_outlier_signature", None) == turbo_vq_outlier_signature
                     and getattr(self, "kv_cache_vq_residual_dim", None) == turbo_vq_residual_dim
                     and getattr(self, "kv_cache_vq_residual_scale", None) == float(turbo_vq_residual_scale)
                     and getattr(self, "kv_cache_hybrid_hot_window", None) == int(turbo_hybrid_hot_window)
                     and getattr(self, "kv_runtime_dequant_cache", None) == turbo_runtime_dequant_cache
                     and getattr(self, "kv_compile_decode", None) == turbo_compile_decode
+                    and getattr(self, "kv_cache_quant_seed", None) == int(turbo_quant_seed)
                 )
             )
         )
@@ -1170,6 +1249,7 @@ class MedusaModelABC(nn.Module):
             current_length_data = self.current_length_data
             # Reset the past key and value states
             current_length_data.zero_()
+            reset_past_key_values(past_key_values)
         else:
             (
                 past_key_values,
@@ -1182,13 +1262,19 @@ class MedusaModelABC(nn.Module):
                 turbo_kv_quant_mode=requested_kv_quant_mode,
                 turbo_radius_bits=turbo_radius_bits,
                 turbo_theta_bits=turbo_theta_bits,
+                turbo_polar_levels=turbo_polar_levels,
                 turbo_vq_bits=turbo_vq_bits,
                 turbo_vq_key_bits=effective_turbo_vq_key_bits,
+                turbo_vq_outlier_bits=turbo_vq_outlier_bits,
+                turbo_vq_key_outlier_bits=effective_turbo_vq_key_outlier_bits,
+                turbo_vq_outlier_channels=turbo_vq_outlier_channels,
+                turbo_vq_outlier_indices=turbo_vq_outlier_indices,
                 turbo_vq_residual_dim=turbo_vq_residual_dim,
                 turbo_vq_residual_scale=turbo_vq_residual_scale,
                 turbo_hybrid_hot_window=turbo_hybrid_hot_window,
                 turbo_runtime_dequant_cache=turbo_runtime_dequant_cache,
                 turbo_compile_decode=turbo_compile_decode,
+                turbo_quant_seed=turbo_quant_seed,
                 packed_qjl_sketch_dim=effective_kv_qjl_dim,
                 packed_qjl_layer=int(turbo_kv_qjl_layer),
             )
@@ -1199,13 +1285,19 @@ class MedusaModelABC(nn.Module):
             self.kv_cache_max_length = effective_kv_max_length
             self.kv_cache_radius_bits = turbo_radius_bits
             self.kv_cache_theta_bits = turbo_theta_bits
+            self.kv_cache_polar_levels = int(turbo_polar_levels)
             self.kv_cache_vq_bits = turbo_vq_bits
             self.kv_cache_vq_key_bits = effective_turbo_vq_key_bits
+            self.kv_cache_vq_outlier_bits = int(turbo_vq_outlier_bits)
+            self.kv_cache_vq_key_outlier_bits = int(effective_turbo_vq_key_outlier_bits)
+            self.kv_cache_vq_outlier_channels = int(turbo_vq_outlier_channels)
+            self.kv_cache_vq_outlier_signature = turbo_vq_outlier_signature
             self.kv_cache_vq_residual_dim = turbo_vq_residual_dim
             self.kv_cache_vq_residual_scale = float(turbo_vq_residual_scale)
             self.kv_cache_hybrid_hot_window = int(turbo_hybrid_hot_window)
             self.kv_runtime_dequant_cache = turbo_runtime_dequant_cache
             self.kv_compile_decode = turbo_compile_decode
+            self.kv_cache_quant_seed = int(turbo_quant_seed)
             self.kv_qjl_dim = effective_kv_qjl_dim
             self.kv_qjl_layer = int(turbo_kv_qjl_layer)
 
@@ -1244,6 +1336,7 @@ class MedusaModelABC(nn.Module):
                 and getattr(self, "turbo_qjl_vocab_size", None) == int(embed_weight.shape[0])
                 and getattr(self, "turbo_qjl_hidden_size", None) == int(embed_weight.shape[1])
                 and getattr(self, "turbo_qjl_device", None) == str(embed_weight.device)
+                and getattr(self, "turbo_qjl_seed", None) == int(turbo_quant_seed)
             )
             if not scorer_reusable:
                 self.turbo_qjl_scorer = QJLTokenSketchCache(
@@ -1251,11 +1344,13 @@ class MedusaModelABC(nn.Module):
                     hidden_size=int(embed_weight.shape[1]),
                     sketch_dim=int(turbo_qjl_dim),
                     device=embed_weight.device,
+                    seed=int(turbo_quant_seed),
                 )
                 self.turbo_qjl_dim = int(turbo_qjl_dim)
                 self.turbo_qjl_vocab_size = int(embed_weight.shape[0])
                 self.turbo_qjl_hidden_size = int(embed_weight.shape[1])
                 self.turbo_qjl_device = str(embed_weight.device)
+                self.turbo_qjl_seed = int(turbo_quant_seed)
             qjl_scorer = self.turbo_qjl_scorer
 
         reset_medusa_mode(self)

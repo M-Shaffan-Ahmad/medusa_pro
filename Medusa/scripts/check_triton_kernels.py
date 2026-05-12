@@ -20,7 +20,6 @@ import torch
 
 from medusa.model import triton_kernels as tk
 from medusa.model.kv_cache import (
-    HybridTurboVQKVCache,
     PolarQuantizedKVCache,
     TurboQuantizedKVCache,
 )
@@ -37,10 +36,8 @@ WRAPPER_NAMES = (
     "lm_head_argmax_triton",
     "copy_selected_kv_cache_triton",
     "turbo_vq_append_triton",
-    "polar_decode_range_triton",
     "compressed_kv_attention_polar_triton",
     "compressed_kv_attention_turbo_vq_triton",
-    "hybrid_kv_attention_turbo_vq_triton",
 )
 
 
@@ -285,7 +282,7 @@ def check_turbo_quant_kernels(device: torch.device) -> None:
     )
     require(out is not None and out.shape == query.shape and torch.isfinite(out).all(), "TurboVQ attention Triton failed")
 
-    hybrid_key = HybridTurboVQKVCache(
+    packed_key = TurboQuantizedKVCache(
         batch_size=1,
         num_heads=2,
         max_length=8,
@@ -293,11 +290,11 @@ def check_turbo_quant_kernels(device: torch.device) -> None:
         device=device,
         dtype=torch.float16,
         current_length=torch.zeros((), dtype=torch.long),
-        bits=8,
+        bits=3,
         residual_dim=32,
-        hot_window=2,
+        runtime_dequant_cache=False,
     )
-    hybrid_value = HybridTurboVQKVCache(
+    packed_value = TurboQuantizedKVCache(
         batch_size=1,
         num_heads=2,
         max_length=8,
@@ -305,57 +302,76 @@ def check_turbo_quant_kernels(device: torch.device) -> None:
         device=device,
         dtype=torch.float16,
         current_length=torch.zeros((), dtype=torch.long),
-        bits=8,
+        bits=4,
         residual_dim=0,
-        hot_window=2,
+        runtime_dequant_cache=False,
     )
-    hybrid_key.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
-    hybrid_value.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
-    out = tk.hybrid_kv_attention_turbo_vq_triton(
+    packed_key.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
+    packed_value.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
+    out = tk.compressed_kv_attention_turbo_vq_triton(
         query,
-        hybrid_key,
-        hybrid_value,
+        packed_key,
+        packed_value,
         attention_mask=None,
         num_key_value_groups=1,
         sm_scale=1.0 / math.sqrt(float(head_dim)),
     )
-    require(out is not None and out.shape == query.shape and torch.isfinite(out).all(), "Hybrid TurboVQ attention Triton failed")
+    require(out is not None and out.shape == query.shape and torch.isfinite(out).all(), "Packed TurboVQ attention Triton failed")
 
 
 def check_polar_kernel(device: torch.device) -> None:
     head_dim = 16
-    key_cache = PolarQuantizedKVCache(
-        batch_size=1,
-        num_heads=2,
-        max_length=8,
-        head_dim=head_dim,
-        device=device,
-        dtype=torch.float16,
-        current_length=torch.zeros((), dtype=torch.long),
-        runtime_dequant_cache=False,
-    )
-    value_cache = PolarQuantizedKVCache(
-        batch_size=1,
-        num_heads=2,
-        max_length=8,
-        head_dim=head_dim,
-        device=device,
-        dtype=torch.float16,
-        current_length=torch.zeros((), dtype=torch.long),
-        runtime_dequant_cache=False,
-    )
-    key_cache.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
-    value_cache.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
     query = torch.randn(1, 2, 1, head_dim, device=device, dtype=torch.float16)
-    out = tk.compressed_kv_attention_polar_triton(
+    recursive_key = PolarQuantizedKVCache(
+        batch_size=1,
+        num_heads=2,
+        max_length=8,
+        head_dim=head_dim,
+        device=device,
+        dtype=torch.float16,
+        current_length=torch.zeros((), dtype=torch.long),
+        first_level_bits=4,
+        other_level_bits=2,
+        polar_levels=4,
+        runtime_dequant_cache=False,
+    )
+    recursive_value = PolarQuantizedKVCache(
+        batch_size=1,
+        num_heads=2,
+        max_length=8,
+        head_dim=head_dim,
+        device=device,
+        dtype=torch.float16,
+        current_length=torch.zeros((), dtype=torch.long),
+        first_level_bits=4,
+        other_level_bits=2,
+        polar_levels=4,
+        runtime_dequant_cache=False,
+    )
+    recursive_key.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
+    recursive_value.cat(torch.randn(1, 2, 4, head_dim, device=device, dtype=torch.float16))
+    decoded = recursive_key._decode_range(0, 4)
+    require(
+        decoded.shape == (1, 2, 4, head_dim) and torch.isfinite(decoded).all(),
+        "Recursive PolarQuant decode failed",
+    )
+    recursive_out = tk.compressed_kv_attention_polar_triton(
         query,
-        key_cache,
-        value_cache,
+        recursive_key,
+        recursive_value,
         attention_mask=None,
         num_key_value_groups=1,
         sm_scale=1.0 / math.sqrt(float(head_dim)),
     )
-    require(out is not None and out.shape == query.shape and torch.isfinite(out).all(), "Polar compressed attention Triton failed")
+    require(
+        recursive_out is not None and recursive_out.shape == query.shape and torch.isfinite(recursive_out).all(),
+        "Recursive PolarQuant fused attention Triton failed",
+    )
+    key_decoded = recursive_key._decode_range(0, 4).to(torch.float32)
+    value_decoded = recursive_value._decode_range(0, 4).to(torch.float32)
+    expected_scores = (query.to(torch.float32) @ key_decoded.transpose(-1, -2)) / math.sqrt(float(head_dim))
+    expected = torch.softmax(expected_scores, dim=-1) @ value_decoded
+    assert_close(recursive_out.to(torch.float32), expected, "Recursive PolarQuant fused attention", atol=2e-2)
 
 
 def check_cuda_kernels() -> None:

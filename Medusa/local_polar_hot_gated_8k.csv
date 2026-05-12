@@ -1,0 +1,25 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,turbo_vq_kv_mb_est,turbo_vq_compressed_kv_mb_est,turbo_vq_transfer_reduction,turbo_vq_key_algorithmic_bits,turbo_vq_value_bits,turbo_vq_actual_bits_per_channel_est,turbo_vq_key_qidx_bytes_per_token_head,turbo_vq_value_qidx_bytes_per_token_head,polar_kv_mb_est,polar_transfer_reduction,polar_algorithmic_bits_per_channel,polar_angle_bytes_per_token_head,polar_radius_bytes_per_token_head,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+long_context_8000t,medusa_base,16,7872,2.0,2.0,64.0,1.401744760999918,1.4017121269998825,11.41434620992383,1.0,1.0,3671.833984375,3850.0,131072,0.0601806640625,246.5,144.43359375,1.7066666666666668,144.43359375,144.43359375,1.7066666666666668,9.0,8,9.375,64,64,59.69921875,4.129032258064516,3.875,23,8,0,0,63,0,336,8,medusa,0,8,8,16,8192,7920,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,336,0,fixed,0,512,"import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig"
+long_context_8000t,turboquant_prod_b4_full_tree,14,7872,1.75,1.75,64.0,1.97546583500025,1.9754424940001627,7.0869360289383225,0.6208797156316161,1.0,3504.896484375,3782.0,131072,0.0601654052734375,246.4375,67.38525390625,3.657142857142857,67.38525390625,67.38525390625,3.657142857142857,4.0,4,4.375,24,32,59.68408203125,4.129032258064516,3.875,23,8,0,0,63,0,336,8,medusa,0,8,8,14,8192,7920,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,336,0,fixed,0,512,"import time
+import random
+import logging
+
+# Set up logging
+"
+long_context_8000t,polarquant_l4_f4o2_full_tree,15,7872,1.875,1.875,64.0,2.2483639800002493,2.248334478000288,6.671517660587294,0.5844853080404169,1.0,3493.958984375,3694.0,131072,0.06017303466796875,246.46875,144.415283203125,1.7066666666666668,144.415283203125,144.415283203125,1.7066666666666668,9.0,8,9.375,64,64,59.691650390625,4.129032258064516,3.875,23,8,0,0,63,0,336,8,medusa,0,8,8,15,8192,7920,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,336,0,fixed,0,512,"import time
+import random
+import logging
+
+# Set up logging
+logging"
+long_context_8000t,qjl_prune_nb40,16,7872,2.0,2.0,65.875,1.4512408479999976,1.4512144479999733,11.02504799396332,0.9658939540819212,1.0,3671.833984375,3926.0,131072,0.0601806640625,246.5,144.43359375,1.7066666666666668,144.43359375,144.43359375,1.7066666666666668,9.0,8,9.375,64,64,59.69921875,4.129032258064516,3.875,23,8,0,0,63,0,336,8,medusa,1,6,9,16,8192,7920,0,63,4,131072,0,0,0,0,16384,0,0,6,8,2,341,0,fixed,0,527,"import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig"

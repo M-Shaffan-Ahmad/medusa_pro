@@ -458,36 +458,10 @@ class LlamaAttention(nn.Module):
             if use_direct_compressed_kv:
                 _, cache_len = key_cache.append_compressed(key_states, dim=2)
                 value_cache.append_compressed(value_states, dim=2)
-                if hybrid_kv_attention_turbo_vq_triton is not None:
-                    attn_output = hybrid_kv_attention_turbo_vq_triton(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        1.0 / math.sqrt(self.head_dim),
-                    )
-                if attn_output is None and compressed_kv_attention_turbo_vq_triton is not None:
-                    attn_output = compressed_kv_attention_turbo_vq_triton(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        1.0 / math.sqrt(self.head_dim),
-                    )
-                if attn_output is None:
-                    attn_output = turbo_vq_attention_with_qjl_residual(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        self.head_dim,
-                    )
-                if attn_output is None:
-                    if compressed_kv_attention_polar_triton is not None:
-                        attn_output = compressed_kv_attention_polar_triton(
+                compressed_prefill_only = int(q_len) > 1 and int(cache_len) == int(q_len)
+                if not compressed_prefill_only:
+                    if compressed_kv_attention_turbo_vq_triton is not None:
+                        attn_output = compressed_kv_attention_turbo_vq_triton(
                             query_states,
                             key_cache,
                             value_cache,
@@ -495,7 +469,35 @@ class LlamaAttention(nn.Module):
                             self.num_key_value_groups,
                             1.0 / math.sqrt(self.head_dim),
                         )
-                if attn_output is None:
+                    if attn_output is None and hybrid_kv_attention_turbo_vq_triton is not None:
+                        attn_output = hybrid_kv_attention_turbo_vq_triton(
+                            query_states,
+                            key_cache,
+                            value_cache,
+                            attention_mask,
+                            self.num_key_value_groups,
+                            1.0 / math.sqrt(self.head_dim),
+                        )
+                    if attn_output is None:
+                        attn_output = turbo_vq_attention_with_qjl_residual(
+                            query_states,
+                            key_cache,
+                            value_cache,
+                            attention_mask,
+                            self.num_key_value_groups,
+                            self.head_dim,
+                        )
+                    if attn_output is None:
+                        if compressed_kv_attention_polar_triton is not None:
+                            attn_output = compressed_kv_attention_polar_triton(
+                                query_states,
+                                key_cache,
+                                value_cache,
+                                attention_mask,
+                                self.num_key_value_groups,
+                                1.0 / math.sqrt(self.head_dim),
+                            )
+                if attn_output is None and not compressed_prefill_only:
                     # Shape unsupported by the custom kernel: decode the already
                     # appended compressed cache once and continue through SDPA.
                     key_states = key_cache._decode_range(0, cache_len)
@@ -521,13 +523,14 @@ class LlamaAttention(nn.Module):
         elif not output_attentions:
             # Fuses scale + mask + softmax + AV into SDPA/Flash-style kernels when
             # available, while still supporting Medusa's arbitrary tree mask.
+            use_implicit_causal_mask = attention_mask is None and q_len > 1 and q_len == kv_seq_len
             attn_output = F.scaled_dot_product_attention(
                 query_states,
                 key_states,
                 value_states,
                 attn_mask=attention_mask,
                 dropout_p=0.0,
-                is_causal=False,
+                is_causal=use_implicit_causal_mask,
             )
             attn_weights = None
         else:
@@ -1072,9 +1075,9 @@ class LlamaModel(LlamaPreTrainedModel):
             attention_mask = attention_mask.to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
             padding_mask = None
         elif attention_mask is None:
-            attention_mask = torch.ones(
-                (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
-            )
+            # Keep the common unpadded prefill/decode path mask-free so SDPA can
+            # apply causal attention without materializing an O(seq^2) 4D mask.
+            attention_mask = None
             padding_mask = None
         else:
             if 0 in attention_mask:
@@ -1082,7 +1085,15 @@ class LlamaModel(LlamaPreTrainedModel):
             else:
                 padding_mask = None
 
-        if attention_mask.dim() != 4:
+        if attention_mask is not None and attention_mask.dim() != 4:
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+            )
+        elif (
+            attention_mask is None
+            and hasattr(self, "medusa_mask")
+            and self.medusa_mask is not None
+        ):
             attention_mask = self._prepare_decoder_attention_mask(
                 attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
