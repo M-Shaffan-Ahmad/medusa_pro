@@ -1,0 +1,28 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,turbo_vq_kv_mb_est,turbo_vq_compressed_kv_mb_est,turbo_vq_transfer_reduction,turbo_vq_key_algorithmic_bits,turbo_vq_value_bits,turbo_vq_actual_bits_per_channel_est,turbo_vq_key_qidx_bytes_per_token_head,turbo_vq_value_qidx_bytes_per_token_head,polar_kv_mb_est,polar_transfer_reduction,polar_algorithmic_bits_per_channel,polar_angle_bytes_per_token_head,polar_radius_bytes_per_token_head,paper_metric_seed,paper_metric_tokens,paper_turbo_mse_rel,paper_turbo_prod_ip_mse_mse,paper_turbo_prod_ip_mse_qjl,paper_turbo_prod_ip_bias,paper_turbo_attention_mse,paper_polar_recon_rel,paper_polar_attention_mse,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+long_context_1024t,medusa_base,32,1061,1.3333333333333333,1.4545454545454546,64.0,0.9046717370000579,0.9046365430000378,35.371946189137944,1.0,1.0,3042.984375,3140.0,131072,0.00833892822265625,34.15625,20.013427734375,1.7066666666666668,20.013427734375,20.013427734375,1.7066666666666668,9.0,8.0,9.375,64,64,8.272216796875,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,924,22,medusa,0,22,22,32,2080,1253,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,924,0,fixed,0,1408,"```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+def benchmark_timer(func, *args, **"
+long_context_1024t,turboquant_prod_b4_full_tree,32,1061,1.3333333333333333,1.4545454545454546,64.0,2.1697301670000115,2.169706167000072,14.748377695391019,0.416951264613197,0.7605633802816901,3010.7734375,3038.0,131072,0.00833892822265625,34.15625,9.339599609375,3.657142857142857,9.339599609375,9.339599609375,3.657142857142857,4.0,4.0,4.375,24,32,8.272216796875,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,924,22,medusa,0,22,22,32,2080,1253,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,924,0,fixed,0,1408,"```python
+import time
+import random
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+class BenchmarkTimer:
+    """"""
+    A simple"
+long_context_1024t,turboquant_prod_outlier_k4v4_c16_full_tree,27,1061,1.125,1.125,64.0,5.318504863000044,5.318479197999977,5.076614705729522,0.14352093262226137,0.04285714285714286,3009.296875,3092.0,131072,0.00830078125,34.0,7.703125,4.413793103448276,7.703125,7.703125,4.413793103448276,3.25,3.25,3.625,18,26,8.234375,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,1008,24,medusa,0,24,24,27,2080,1253,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1008,0,fixed,0,1536,"```C
+
+The best "" return to the public!
+
+Here's is-now-.
+
+VAN (1. (A, epon"

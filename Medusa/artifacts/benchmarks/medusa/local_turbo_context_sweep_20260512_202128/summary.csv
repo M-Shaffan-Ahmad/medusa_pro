@@ -1,0 +1,2 @@
+category,mode,prompt_tokens,tokens,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,context_utilization,fp16_kv_mb_est,turbo_vq_kv_mb_est,turbo_vq_transfer_reduction,accepted_tokens_per_step,verified_nodes_per_step
+long_context_32768t,turboquant_prod_b4_full_tree,32127,32,14.54401064099875,14.543979406998915,2.2002184122303787,,0.0,5227.45263671875,5488.0,0.24535369873046875,1004.96875,274.796142578125,3.657142857142857,1.4545454545454546,64.0
