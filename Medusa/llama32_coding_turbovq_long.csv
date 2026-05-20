@@ -1,0 +1,15 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,packed_kv_qjl_sidecar_mb_est,packed_kv_qjl_sidecar_pct_of_fp16_kv,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+long_context_4096t,medusa_base,32,4050,1.0,1.6842105263157894,64.0,1.3499563049999779,1.3499342219997743,23.704470938413465,1.0,1.0,4543.55224609375,4870.0,131072,0.0311431884765625,127.5625,74.74365234375,1.7066666666666668,0.498291015625,0.00390625,0,0,63,0,798,19,medusa,0,19,19,32,32768,4218,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,798,0,fixed,0,1216,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+"
+long_context_4096t,turbo_vq_strict_b8_full_tree,32,4050,1.0,1.6842105263157894,64.0,8.76904420200026,8.769011843000044,3.649200444525146,0.1539456608842326,1.0,4538.98486328125,4556.0,131072,0.0311431884765625,127.5625,74.74365234375,1.7066666666666668,0.498291015625,0.00390625,0,0,63,0,798,19,medusa,0,19,19,32,32768,4218,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,798,0,fixed,0,1216,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+"

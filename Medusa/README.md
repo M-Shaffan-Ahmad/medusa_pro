@@ -1,200 +1,294 @@
-<img src="assets/logo.png" alt="Medusa" width="100" align="left"><div align="center"><h1>&nbsp;Medusa: Simple Framework for Accelerating LLM Generation with Multiple Decoding Heads</h1></div>
+# Medusa Acceleration Extensions
+
+#### TurboQuant, Custom Trees, and Multi Minnions for Faster Local LLM Decoding
+
+Muhammad Shaffan Ahmad (23i-0673) and Hamza Tariq (23i-0519)
 
 <p align="center">
-| <a href="https://sites.google.com/view/
-medusa-llm"><b>Blog</b></a> | <a href="https://arxiv.org/abs/2401.10774"><b>Report</b></a> | <a href="ROADMAP.md"><b>Roadmap</b></a> |
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/intro.png" alt="Turbo Medusa overview" width="92%">
 </p>
 
----
-*News* 🔥
-- [2024/1] Medusa technical report is now available on [arXiv](https://arxiv.org/abs/2401.10774). We've added multiple new features, including Medusa-2 recipe for full-model training, self-distillation for adding Medusa to any fine-tuned LLM, etc. The new results show a 2.2-3.6x speedup over the original model on a range of LLMs.
+This repository extends the Medusa speculative-decoding framework with three
+project directions:
 
----
-## Introduction
+1. **TurboQuant KV-cache compression** for longer-context Medusa decoding on
+   constrained GPUs.
+2. **Custom speculative tree sizing** so the verifier does not always pay for a
+   full 63/64-node tree.
+3. **Multi Minnions**, a set of small niche-specific Medusa head packs that can
+   be routed by task type.
 
-Medusa is a simple framework that democratizes the acceleration techniques for LLM generation with multiple decoding heads.
+The final report and presentation are included in the repo:
 
-<div align="center">
-  <picture>
-  <img src="assets/medusa_demo.gif" width="80%">
-  </picture>
-  <br>
-  <div align="center" width="80%">
-  <em>Medusa-1 on Vicuna-7b.</em>
-  </div>
-  <br>
-</div>
+| Artifact | File |
+| --- | --- |
+| Final report | [turbo_medusa_minions.pdf](artifacts/benchmarks/medusa/local_turbo_context_findings/turbo_medusa_minions.pdf) |
+| Presentation PDF | [presentation.pdf](presentation.pdf) |
+| Presentation HTML | [presentation.html](presentation.html) |
+| TinyLlama optimisation report | [tinyllama_medusa_optimisation_report.pdf](tinyllama_medusa_optimisation_report.pdf) |
 
+## Motivation
 
-We aim to tackle the three pain points of popular acceleration techniques like speculative decoding:
+Autoregressive LLM decoding is serial: every generated token normally needs a
+full target-model step. Medusa improves this by adding lightweight heads that
+draft multiple future tokens and verify a token tree in parallel. At longer
+context windows, however, the KV cache grows linearly with context length, tree
+verification can become unnecessarily expensive, and one generic head pack may
+not be equally good for coding, chat, summarization, and reasoning.
 
-- Requirement of a good draft model.
-- System complexity.
-- Inefficiency when using sampling-based generation.
+This project targets those bottlenecks by reducing long-context KV memory
+pressure, calibrating Medusa tree size, and training small specialized head
+packs while keeping the base model unchanged.
 
+## Main Findings
 
-<div align="center">
-  <picture>
-  <img src="assets/medusa_pipeline.jpg" width="60%">
-  </picture>
-  <br>
-  <div align="left" width="80%">
-  <em>Medusa adds extra "heads" to LLMs to predict multiple future tokens simultaneously. When augmenting a model with Medusa, the original model stays untouched, and only the new heads are fine-tuned during training. During generation, these heads each produce multiple likely words for the corresponding position. These options are then combined and processed using a tree-based attention mechanism. Finally, a typical acceptance scheme is employed to pick the longest plausible prefix from the candidates for further decoding.</em>
-  </div>
-  <br>
-</div>
+| Area | Finding |
+| --- | --- |
+| TurboQuant KV cache | Reduced KV-cache size by roughly 3.6x and enabled 32k context on a 6 GB RTX 3060 Laptop GPU where base Medusa OOMed. |
+| Raw throughput | Current TurboQuant path stores compressed KV but decodes temporary dense K/V before attention, so it is a capacity win first rather than a raw TPS win. |
+| Custom trees | 24-node/custom trees beat full 63/64-node trees in the final sweeps for TinyLlama and Llama-3.2. |
+| Multi Minnions | Specialized head packs are promising: the coding-specialized Llama-3.2 heads reached 40.4% top-1 on head 1 after under 2 hours of RTX 3080 training. |
+| Reliability boundary | Exact verifier acceptance remains the correctness boundary; QJL and pruning are treated as planning signals, not final acceptance rules. |
 
-We aim to solve the challenges associated with speculative decoding by implementing the following ideas:
+## SOTA Context
 
-- Instead of introducing a new model, we train multiple decoding heads on the *same* model.
-- The training is parameter-efficient so that even the "GPU-Poor" can do it. And since there is no additional model, there is no need to adjust the distributed computing setup.
-- Relaxing the requirement of matching the distribution of the original model makes the non-greedy generation even faster than greedy decoding.
+| Work | Core idea | Relevance to this project | Gap targeted here |
+| --- | --- | --- | --- |
+| Speculative Decoding / Speculative Sampling | Use a cheaper draft model and verify several tokens with the target model. | Establishes draft-and-verify as the main latency reduction pattern. | Requires a good draft model and can add model-management cost. |
+| SpecInfer | Builds and verifies a speculative token tree. | Closest systems-level ancestor of Medusa-style tree verification. | Tree size should be hardware and acceptance aware. |
+| Medusa | Adds multiple draft heads directly to the target model and verifies candidate trees. | Base system used in this repo. | Fixed/default trees and generic heads are not always optimal. |
+| Hydra | Makes draft heads sequentially dependent to improve Medusa-style speculation quality. | Supports the idea that head architecture and conditioning matter. | This project explores domain specialization instead. |
+| EAGLE | Drafts in feature space for stronger speculative acceptance. | Shows stronger draft representations can outperform simple heads. | More complex drafting can be harder to train and deploy locally. |
+| PagedAttention / vLLM | Manages KV cache blocks to reduce serving fragmentation. | Orthogonal memory-management direction. | Does not compress numerical KV vectors directly. |
+| KVQuant / KIVI | Sub-4-bit KV-cache quantization using outlier-aware or asymmetric layouts. | Strong long-context KV compression baselines. | Accuracy and speed depend on metadata layout, calibration, and custom kernels. |
+| PolarQuant / QJL / TurboQuant | Polar transforms, 1-bit residual correction, and near-optimal online vector quantization. | Most direct SOTA context for this implementation. | Reported speedups require fused compressed-attention kernels; this repo still decodes temporary dense K/V. |
 
-In the initial release, our primary focus is on optimizing Medusa for a batch size of 1—a setting commonly utilized for local model hosting. In this configuration, Medusa delivers approximately a 2x speed increase across a range of Vicuna models. We are actively working to extend Medusa's capabilities by integrating it into additional inference frameworks, with the aim of achieving even greater performance gains and extending Medusa to broader settings.
+## TurboQuant KV Cache
 
-<p align="center">
-  <picture>
-  <img src="assets/medusa_speedup_cmp.jpg" width="45%">
-  </picture>
-</p>
+The implemented TurboQuant path stores KV vectors in compressed form using
+random rotation, scalar quantization, per-token scale metadata, and a 1-bit QJL
+residual correction for keys.
 
-In the updated version, we add support for full-model training, called Medusa-2 (compared to Medusa-1, which only trains the new heads), which requires a special recipe that adds the speculative prediction ability while keeping the original model's performance.
-
-We also add support for self-distillation, which allows us to add Medusa to any fine-tuned LLM without requiring the availability of the original training data.
-
-## Contents
-- [Introduction](#introduction)
-- [Contents](#contents)
-- [Installation](#installation)
-  - [Method 1: With pip (may not be the latest version)](#method-1-with-pip-may-not-be-the-latest-version)
-  - [Method 2: From the source (recommended)](#method-2-from-the-source-recommended)
-  - [Model Weights](#model-weights)
-  - [Inference](#inference)
-  - [Training](#training)
-  - [Training (legacy)](#training-legacy)
-  - [Push to Hugging Face Hub](#push-to-hugging-face-hub)
-- [Citation](#citation)
-- [Codebase Guide](#codebase-guide)
-- [Community Adoption](#community-adoption)
-- [Contributing](#contributing)
-- [Acknowledgements](#acknowledgements)
-
-## Installation
-### Method 1: With pip (may not be the latest version)
-```bash
-pip install medusa-llm
+```text
+new fp16 K/V -> encode once -> store compressed cache
+attention read -> decode temporary K/V view -> verify/generate
+compressed cache remains stored
 ```
-### Method 2: From the source (recommended)
+
+TurboQuant therefore provides a capacity improvement first. It lowers peak GPU
+allocation and allows longer context windows than base Medusa on the same
+hardware. The expected throughput gain depends on removing the temporary dense
+decode path with fused compressed-attention kernels.
+
+<p align="center">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/throughput_vs_context.png" alt="Throughput vs context" width="82%">
+</p>
+
+<p align="center">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/speed_ratio_vs_context.png" alt="TurboQuant speed ratio vs context" width="82%">
+</p>
+
+<p align="center">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/memory_vs_context.png" alt="Memory vs context" width="82%">
+</p>
+
+### Long-Context Measurements
+
+The local measurements were run on an RTX 3060 Laptop GPU with 6 GB VRAM and
+32 generated tokens per context point. The 32k base Medusa run OOMed during
+initial prompt prefill.
+
+| Context | Base TPS | TurboQuant b4 TPS | Speed Ratio | Base Peak MB | Turbo Peak MB | Base KV Cache MB | Turbo KV Cache MB |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 35.37 | 14.75 | 0.417 | 3043.0 | 3010.8 | 34.2 | 9.3 |
+| 2,048 | 33.88 | 13.86 | 0.409 | 3136.8 | 3081.1 | 64.8 | 17.7 |
+| 4,096 | 24.98 | 10.84 | 0.434 | 3329.3 | 3227.5 | 127.6 | 34.9 |
+| 8,192 | 14.99 | 7.45 | 0.497 | 3709.0 | 3512.8 | 253.1 | 69.2 |
+| 16,384 | 8.10 | 4.49 | 0.554 | 4466.8 | 4093.0 | 504.3 | 137.9 |
+| 32,768 | OOM | 2.20 | N/A | OOM | 5227.5 | 1005.0 | 274.8 |
+
+At 16k context, base Medusa and TurboQuant both fit, but TurboQuant used about
+374 MB less peak allocation. At 32k context, base Medusa OOMed while
+TurboQuant b4 completed at 2.20 TPS.
+
+## Custom Tree Size
+
+The default full Medusa tree is not universally best. Larger trees increase
+candidate coverage, but they also increase verification work. If head quality
+or task predictability is not high enough, many extra nodes do not translate
+into accepted tokens.
+
+<p align="center">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/tree.png" alt="Custom tree-size summary" width="82%">
+</p>
+
+### Tree Sweep Summary
+
+| Model / setting | 64-node/full tree max TPS | 24-node/custom tree max TPS | Finding |
+| --- | ---: | ---: | --- |
+| TinyLlama final sweep | 121.79 TPS | **151.17 TPS** | The 24-node tree gave the best observed max TPS, about **1.24x** over the full-tree run. |
+| Llama-3.2 final sweep | 53.13 TPS | **59.60 TPS** | The 24-node tree gave the best observed max TPS, about **1.12x** over the full-tree run. |
+| Quick calibration sweep | 108.40 TPS | **129.04 TPS** | The 24-node setting also won in the quick calibration run, about **1.19x** over the full-tree max. |
+
+<p align="center">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/llma3.2.jpeg" alt="Llama 3.2 tree sweep" width="48%">
+  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/tiny.jpeg" alt="TinyLlama tree sweep" width="48%">
+</p>
+
+The better policy is to sweep candidate limits such as 8, 16, 24, 32, 40, and
+63/64, compare TPS, accepted tokens per step, and prefix match, and treat the
+full tree as a fallback rather than the default answer.
+
+## Multi Minnions
+
+Medusa heads are small compared with the base model, so they are cheap to train
+and easy to swap. Multi Minnions means training several small speculative head
+packs, each specialized for a narrow workload.
+
+```text
+base LLM
+  + coding Minnion heads
+  + chat Minnion heads
+  + summarization Minnion heads
+  + reasoning Minnion heads
+  + domain/tool-use Minnion heads
+```
+
+At inference time, a lightweight router can select a head pack based on prompt
+type, or the user can explicitly choose one. The base model remains unchanged.
+
+Specialized heads help because task-specific data lowers the entropy of the
+next-token distribution seen by the heads. The local coding-specialized
+Llama-3.2 Medusa heads reached a validation score of 0.410 on the coding
+corpus with these head top-1 accuracies:
+
+```text
+head1 40.4%, head2 22.1%, head3 14.7%, head4 10.7%
+```
+
+The earlier mixed Llama-3.2 head run logged a score of 0.174, which supports
+the direction that niche heads can become much stronger on their target domain.
+
+## TinyLlama Medusa Path
+
+The TinyLlama report targets `TinyLlama/TinyLlama-1.1B-Chat-v1.0` with a local
+four-head Medusa configuration. The implementation uses tree decoding and
+compares standard autoregressive generation against Medusa generation,
+reduced-tree Turbo modes, Triton-assisted kernels, QJL pruning signals,
+KV-cache compression, and self-distilled Medusa head training.
+
+| Item | Value |
+| --- | --- |
+| Base model | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` |
+| Local Medusa config | `TinyLlama-1.1B-Chat-v1.0-4heads/` |
+| Medusa heads | 4 |
+| Medusa layers | 1 |
+| Decoding strategy | Tree decoding |
+| Reliable verifier | Exact base-model acceptance |
+
+The key conclusion is that Medusa performance is governed by accepted tokens
+per decoding step, not tree size alone. Reduced trees can lower verifier work,
+but they only improve end-to-end speed when they preserve enough accepted
+prefix depth.
+
+## Repository Map
+
+| Path | Purpose |
+| --- | --- |
+| `medusa/model/medusa_model.py` | Medusa model wrapper and generation path. |
+| `medusa/model/medusa_choices.py` | Full and reduced speculative tree definitions. |
+| `medusa/model/kv_cache.py` | FP16, packed QJL, TurboVQ, hybrid, and polar KV-cache experiments. |
+| `medusa/model/triton_kernels.py` | Triton fast paths for QJL scoring, selection, cache operations, and argmax. |
+| `bench_transformers_base.py` | Hugging Face autoregressive baseline benchmark. |
+| `bench_medusa.py` | Medusa benchmark entrypoint. |
+| `bench_comm_turbo.py` | Communication/TurboQuant and tree-sweep benchmark harness. |
+| `run_batch_benchmark.py` | Batch prompt-suite benchmark driver. |
+| `train_tinyllama_medusa_heads.py` | Self-distillation training path for TinyLlama Medusa heads. |
+| `kaggle_mix_and_train_medusa.py` | Mixed dataset training recipe for Medusa heads. |
+| `artifacts/benchmarks/medusa/local_turbo_context_findings/` | Final report, plots, and generated benchmark artifacts. |
+
+## Reproducing Benchmarks
+
+Install the repo in editable mode:
+
 ```bash
-git clone https://github.com/FasterDecoding/Medusa.git
-cd Medusa
 pip install -e .
 ```
 
-### Model Weights
-#### Medusa-1
-| Size | Chat Command                                  | Hugging Face Repo                                                     |
-| ---- | --------------------------------------------- | --------------------------------------------------------------------- |
-| 7B   | `python -m medusa.inference.cli --model FasterDecoding/medusa-vicuna-7b-v1.3` | [FasterDecoding/medusa-vicuna-7b-v1.3](https://huggingface.co/FasterDecoding/medusa-vicuna-7b-v1.3)   |
-| 13B  | `python -m medusa.inference.cli --model FasterDecoding/medusa-vicuna-13b-v1.3` | [FasterDecoding/medusa-vicuna-13b-v1.3](https://huggingface.co/FasterDecoding/medusa-vicuna-13b-v1.3) |
-| 33B  | `python -m medusa.inference.cli --model FasterDecoding/medusa-vicuna-33b-v1.3` | [FasterDecoding/medusa-vicuna-33b-v1.3](https://huggingface.co/FasterDecoding/medusa-vicuna-33b-v1.3) |
+Run a plain autoregressive baseline:
 
-#### Medusa-2
-| Size | Chat Command                                  | Hugging Face Repo                                                     |
-| ---- | --------------------------------------------- | --------------------------------------------------------------------- |
-| Zephyr-7B-Beta   | `python -m medusa.inference.cli --model FasterDecoding/medusa-1.0-zephyr-7b-beta` | [FasterDecoding/medusa-1.0-zephyr-7b-beta](https://huggingface.co/FasterDecoding/medusa-1.0-zephyr-7b-beta)   |
-| Vicuna-7B-v1.5 | `python -m medusa.inference.cli --model FasterDecoding/medusa-1.0-vicuna-7b-v1.5` | [FasterDecoding/medusa-1.0-vicuna-7b-v1.5](https://huggingface.co/FasterDecoding/medusa-1.0-vicuna-7b-v1.5) |
-| Vicuna-13B-v1.5  | `python -m medusa.inference.cli --model FasterDecoding/medusa-1.0-vicuna-13b-v1.5` | [FasterDecoding/medusa-1.0-vicuna-13b-v1.5](https://huggingface.co/FasterDecoding/medusa-1.0-vicuna-13b-v1.5) |
-| Vicuna-33B-v1.5  | `python -m medusa.inference.cli --model FasterDecoding/medusa-1.0-vicuna-33b-v1.5` | [FasterDecoding/medusa-1.0-vicuna-33b-v1.5](https://huggingface.co/FasterDecoding/medusa-1.0-vicuna-33b-v1.5) |
-
-
-### Inference
-We currently support single-GPU inference with a batch size of 1, which is the most common setup for local model hosting. We are actively working to extend Medusa's capabilities by integrating it into other inference frameworks; please don't hesitate to reach out if you are interested in contributing to this effort.
-
-You can use the following command to launch a CLI interface:
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m medusa.inference.cli --model [path of medusa model]
+python bench_transformers_base.py \
+  --model-dir TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --out-csv base_transformers_benchmark.csv \
+  --target-new-tokens 160 \
+  --prompt-suite mixed
 ```
-You can also pass `--load-in-8bit` or `--load-in-4bit` to load the base model in quantized format. If you download the base model elsewhere, you may override base model name or path with `--base-model  [path of base model]`.
 
-### Training
-In the updated version, we use the amazing [axolotl](https://github.com/OpenAccess-AI-Collective/axolotl) library to manage the training process. Please refer to our [fork](https://github.com/ctlllll/axolotl) for the training code. The major code modifications are in [`src/axolotl/utils/models.py`](https://github.com/ctlllll/axolotl/blob/main/src/axolotl/utils/models.py). The training configs can be found in [`examples/medusa`](https://github.com/ctlllll/axolotl/tree/main/examples/medusa). A typical training command is as follows:
+Run Medusa/Turbo tree sweeps:
+
 ```bash
-accelerate launch -m axolotl.cli.train examples/medusa/your_config.yml
+python bench_comm_turbo.py \
+  --model-dir TinyLlama-1.1B-Chat-v1.0-4heads \
+  --out-csv comm_turbo_benchmark.csv \
+  --target-new-tokens 160 \
+  --prompt-suite mixed \
+  --choice-sweep 24,32
 ```
 
-The data preparation code for self-distillation can be found in [`data_generation` folder](data_generation) of the current repo. For other datasets, you can directly download the data from the corresponding Hugging Face dataset repo.
+Run the batch benchmark driver:
 
-### Training on various architectures
-*The following instructions are for the initial release of Medusa, it provides a minimal example of how to train a Medusa-1 model. For the updated version, please refer to the previous section.*
-
-For training, please install:
 ```bash
-pip install -e ".[train]"
-```
-#### Prepare the data
-We take a public version of the ShareGPT dataset, which is a subset of the Vicuna training data. For other models, you can use the corresponding training dataset.
-```bash
-git clone https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered
-```
-Remark: If you haven't installed `git-lfs`, please install it before cloning:
-```bash
-git lfs install
+python run_batch_benchmark.py
 ```
 
-#### Adapt the data to the model you want to enable medusa on.
+Generated CSV files are the source of truth for exact averaged throughput,
+prefix-match, acceptance, and memory values.
 
-Start by launch an inference server you like that will run the model you want to train on.
-Let's use [mistralai/Mistral-7B-Instruct-v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2) as an example.
+## Final Configuration Recommendation
 
-For instance you can use [text-generation-inference](https://github.com/huggingface/text-generation-inference), which you
-can also use after you've trained the medusa heads.
+| Component | Recommendation |
+| --- | --- |
+| Base model | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` |
+| Medusa heads | Local four-head Medusa setup |
+| Generation mode | Greedy Medusa generation with exact verifier acceptance |
+| Main tree | Full Medusa tree for conservative reliability |
+| Reduced tree | Report and deploy as a calibrated Turbo ablation |
+| QJL | Use only as a pruning/ranking signal before exact verification |
+| KV compression | Report as a capacity-focused ablation until fused compressed attention is added |
+| Training | Freeze base model; train Medusa heads with self-distilled greedy future tokens |
 
-```
-model=mistralai/Mistral-7B-Instruct-v0.2
-volume=$PWD/data # share a volume with the Docker container to avoid downloading weights every run
-docker run --gpus all --shm-size 1g -p 8080:80 -v $volume:/data ghcr.io/huggingface/text-generation-inference:latest --model-id $model --input-length 4000 --max-total-tokens 4096 --max-batch-prefill-tokens 4000
-```
-The sequences in shareGPT are relatively long for some, so make sure you can infer on those. If you do not have enough room, the script will simply ignore those long conversation.
-It shouldn't impact too much downstream performance, but more data is always better.
-You can use various tradeoffs to [speed up inference](https://huggingface.co/docs/text-generation-inference/index) but the defaults show be good enough in most cases.
+## Takeaways
 
-```
-python create_data.py --input-filename ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json --output-filename mistral.json
-```
+1. TurboQuant works as a KV capacity extension for base Medusa and enabled 32k
+   context locally where the baseline OOMed.
+2. Raw speedup is not visible yet because the implementation still decodes
+   temporary dense K/V and lacks fused compressed attention.
+3. Tree size should be calibrated per model and workload; full 63/64-node trees
+   are not consistently optimal.
+4. Multi Minnions is the strongest training-side idea: keep the base model
+   fixed, train small specialized head packs, and route prompts to the best
+   niche.
 
-#### Train the model
-We follow the training setup from [FastChat](https://github.com/lm-sys/FastChat#fine-tuning), but with a much larger learning rate because we freeze the original model and only train the new heads. Here is the training command for the Vicuna-7b model on 4 GPUs. Since we are only training the new heads, the training does not require a lot of memory, and only data parallelism is needed. You can modify the script to fit your own setup. For larger models, we use the same setup. You can also use `--load_in_8bit` or `--load_in_4bit` to load the base model in quantized format.
-```bash
-torchrun --nproc_per_node=4 medusa/train/train_legacy.py --model_name_or_path mistralai/Mistral-7B-Instruct-v0.2 \
-    --data_path mistral.json \
-    --bf16 True \
-    --output_dir test \
-    --num_train_epochs 2 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --gradient_accumulation_steps 4 \
-    --evaluation_strategy "no" \
-    --save_strategy "no" \
-    --learning_rate 1e-3 \
-    --weight_decay 0.0 \
-    --warmup_ratio 0.1 \
-    --lr_scheduler_type "cosine" \
-    --logging_steps 1 \
-    --tf32 True \
-    --model_max_length 2048 \
-    --lazy_preprocess True \
-    --medusa_num_heads 3 \
-    --medusa_num_layers 1 \
-    --deepspeed deepspeed.json
-```
-### Push to Hugging Face Hub
-You can use the following command to push your model to the Hugging Face Hub:
-```bash
-python -m medusa.hf_utils --folder [path of the model folder] --repo [name of the repo]
-```
+## References
+
+- Leviathan, Kalman, Matias. [Fast Inference from Transformers via Speculative Decoding](https://arxiv.org/abs/2211.17192), 2023.
+- Chen et al. [Accelerating Large Language Model Decoding with Speculative Sampling](https://arxiv.org/abs/2302.01318), 2023.
+- Miao et al. [SpecInfer: Accelerating Generative Large Language Model Serving with Tree-based Speculative Inference and Verification](https://arxiv.org/abs/2305.09781), 2023.
+- Kwon et al. [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180), 2023.
+- Cai et al. [Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads](https://arxiv.org/abs/2401.10774), 2024.
+- Li et al. [EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty](https://arxiv.org/abs/2401.15077), 2024.
+- Ankner et al. [Hydra: Sequentially-Dependent Draft Heads for Medusa Decoding](https://arxiv.org/abs/2402.05109), 2024.
+- Hooper et al. [KVQuant: Towards 10 Million Context Length LLM Inference with KV Cache Quantization](https://arxiv.org/abs/2401.18079), 2024.
+- Liu et al. [KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache](https://arxiv.org/abs/2402.02750), 2024.
+- Zandieh et al. [QJL: 1-Bit Quantized JL Transform for KV Cache Quantization with Zero Overhead](https://arxiv.org/abs/2406.03482), 2024.
+- Han et al. [PolarQuant: Quantizing KV Caches with Polar Transformation](https://arxiv.org/abs/2502.02617), 2025.
+- Zandieh et al. [TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate](https://arxiv.org/abs/2504.19874), 2025.
 
 ## Citation
+
+This project builds on the original Medusa framework:
+
 ```bibtex
 @article{cai2024medusa,
   title   = {Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads},
@@ -203,24 +297,3 @@ python -m medusa.hf_utils --folder [path of the model folder] --repo [name of th
   journal = {arXiv preprint arXiv: 2401.10774}
 }
 ```
-
-## Codebase Guide
-`medusa/model/medusa_model.py` is the key file for Medusa. It contains the `MedusaModel` class, which is a wrapper of the original model and the new heads. This class also has an implementation of a streaming generation method. If you want to dive into the details of Medusa, this is the place to start.
-
-We also provide some illustrative notebooks in `notebooks/` to help you understand the codebase.
-
-## Community Adoption
-We are super excited to see that Medusa has been adopted by many open-source projects. Here is an (incomplete) list:
-- [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/medusa)
-- [TGI](https://github.com/huggingface/text-generation-inference/blob/main/server/text_generation_server/utils/medusa.py)
-- [RTP-LLM](https://github.com/alibaba/rtp-llm/blob/main/docs/SpeculativeDecoding-Tutroial.md#medusa-decoding)
-
-We are grateful to the authors for their contributions to the community and sincerely hope that Medusa can help accelerate the development of LLMs. If you are using Medusa in your project, please let us know, and we will add your project to the list.
-
-## Contributing
-We welcome community contributions to Medusa. If you have an idea for how to improve it, please open an issue to discuss it with us. When submitting a pull request, please ensure that your changes are well-tested. Please split each major change into a separate pull request. We also have a [Roadmap](ROADMAP.md) summarizing our future plans for Medusa. Don't hesitate to reach out if you are interested in contributing to any of the items on the roadmap.
-
-## Acknowledgements
-This codebase is influenced by remarkable projects from the LLM community, including [FastChat](https://github.com/lm-sys/FastChat), [TinyChat](https://github.com/mit-han-lab/llm-awq/tree/main/), [vllm](https://github.com/vllm-project/vllm), [axolotl](https://github.com/OpenAccess-AI-Collective/axolotl).
-
-This project is supported by [Together AI](https://together.ai/), [MyShell AI](https://myshell.ai/), [Chai AI](https://www.chai-research.com/).

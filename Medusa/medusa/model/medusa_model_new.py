@@ -495,12 +495,11 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             turbo_skip_threshold_high (float, optional): If pass-1 top prob exceeds this, skip pass-2 and accept one token.
             turbo_skip_threshold_low (float, optional): If pass-1 top prob is below this, skip pass-2 and do greedy one token.
             turbo_kv_max_length (int, optional): Maximum cache length for KV pre-allocation.
-            turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for the
-                previous polar-inspired cache, "turbo_vq" for strict random-rotation
-                Lloyd-Max TurboQuant KV, or "hybrid_turbo_vq" for exact hot-window KV
-                plus compressed older KV.
-            turbo_radius_bits (int, optional): Radius quantization bits for polar KV.
-            turbo_theta_bits (int, optional): Angle quantization bits for polar KV.
+            turbo_kv_quant_mode (str, optional): KV compression backend: "polar" for
+                recursive PolarQuant, or "turbo_vq" for TurboQuantprod keys plus
+                TurboQuantmse values.
+            turbo_radius_bits (int, optional): Later-level angle bits for recursive PolarQuant.
+            turbo_theta_bits (int, optional): First-level angle bits for recursive PolarQuant.
             turbo_vq_bits (int, optional): Scalar Lloyd-Max bits for "turbo_vq" KV compression.
             turbo_vq_key_bits (int, optional): Override key-cache Lloyd-Max bits. Set this
                 to `turbo_vq_bits - 1` to test the TurboQuant inner-product bit-budget
@@ -510,9 +509,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             turbo_vq_residual_scale (float, optional): Multiplier for the residual-QJL
                 correction. `1.0` is the unbiased estimator; lower values can dampen
                 sketch variance during calibration.
-            turbo_hybrid_hot_window (int, optional): Exact recent-KV window for
-                `turbo_kv_quant_mode="hybrid_turbo_vq"`. Older positions remain
-                compressed and are decoded only when the SDPA verifier needs them.
             turbo_runtime_dequant_cache (bool, optional): Keep an incremental dequantized shadow cache
                 for fast attention when polar compression is enabled. Set False to use the
                 direct compressed-KV Triton attention path instead of materializing FP16 K/V.
@@ -573,7 +569,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                     and getattr(self, "kv_cache_vq_key_bits", None) == effective_turbo_vq_key_bits
                     and getattr(self, "kv_cache_vq_residual_dim", None) == turbo_vq_residual_dim
                     and getattr(self, "kv_cache_vq_residual_scale", None) == float(turbo_vq_residual_scale)
-                    and getattr(self, "kv_cache_hybrid_hot_window", None) == int(turbo_hybrid_hot_window)
                     and getattr(self, "kv_runtime_dequant_cache", None) == turbo_runtime_dequant_cache
                     and getattr(self, "kv_compile_decode", None) == turbo_compile_decode
                 )
@@ -603,7 +598,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
                 turbo_vq_key_bits=effective_turbo_vq_key_bits,
                 turbo_vq_residual_dim=turbo_vq_residual_dim,
                 turbo_vq_residual_scale=turbo_vq_residual_scale,
-                turbo_hybrid_hot_window=turbo_hybrid_hot_window,
                 turbo_runtime_dequant_cache=turbo_runtime_dequant_cache,
                 turbo_compile_decode=turbo_compile_decode,
             )
@@ -618,7 +612,6 @@ class MedusaLlamaModel(KVLlamaForCausalLM):
             self.kv_cache_vq_key_bits = effective_turbo_vq_key_bits
             self.kv_cache_vq_residual_dim = turbo_vq_residual_dim
             self.kv_cache_vq_residual_scale = float(turbo_vq_residual_scale)
-            self.kv_cache_hybrid_hot_window = int(turbo_hybrid_hot_window)
             self.kv_runtime_dequant_cache = turbo_runtime_dequant_cache
             self.kv_compile_decode = turbo_compile_decode
 

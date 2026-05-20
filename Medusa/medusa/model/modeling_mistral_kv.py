@@ -292,36 +292,10 @@ class MistralAttention(nn.Module):
             if use_direct_compressed_kv:
                 _, cache_len = key_cache.append_compressed(key_states, dim=2)
                 value_cache.append_compressed(value_states, dim=2)
-                if hybrid_kv_attention_turbo_vq_triton is not None:
-                    attn_output = hybrid_kv_attention_turbo_vq_triton(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        1.0 / math.sqrt(self.head_dim),
-                    )
-                if attn_output is None and compressed_kv_attention_turbo_vq_triton is not None:
-                    attn_output = compressed_kv_attention_turbo_vq_triton(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        1.0 / math.sqrt(self.head_dim),
-                    )
-                if attn_output is None:
-                    attn_output = turbo_vq_attention_with_qjl_residual(
-                        query_states,
-                        key_cache,
-                        value_cache,
-                        attention_mask,
-                        self.num_key_value_groups,
-                        self.head_dim,
-                    )
-                if attn_output is None:
-                    if compressed_kv_attention_polar_triton is not None:
-                        attn_output = compressed_kv_attention_polar_triton(
+                compressed_prefill_only = int(q_len) > 1 and int(cache_len) == int(q_len)
+                if not compressed_prefill_only:
+                    if compressed_kv_attention_turbo_vq_triton is not None:
+                        attn_output = compressed_kv_attention_turbo_vq_triton(
                             query_states,
                             key_cache,
                             value_cache,
@@ -329,7 +303,35 @@ class MistralAttention(nn.Module):
                             self.num_key_value_groups,
                             1.0 / math.sqrt(self.head_dim),
                         )
-                if attn_output is None:
+                    if attn_output is None and hybrid_kv_attention_turbo_vq_triton is not None:
+                        attn_output = hybrid_kv_attention_turbo_vq_triton(
+                            query_states,
+                            key_cache,
+                            value_cache,
+                            attention_mask,
+                            self.num_key_value_groups,
+                            1.0 / math.sqrt(self.head_dim),
+                        )
+                    if attn_output is None:
+                        attn_output = turbo_vq_attention_with_qjl_residual(
+                            query_states,
+                            key_cache,
+                            value_cache,
+                            attention_mask,
+                            self.num_key_value_groups,
+                            self.head_dim,
+                        )
+                    if attn_output is None:
+                        if compressed_kv_attention_polar_triton is not None:
+                            attn_output = compressed_kv_attention_polar_triton(
+                                query_states,
+                                key_cache,
+                                value_cache,
+                                attention_mask,
+                                self.num_key_value_groups,
+                                1.0 / math.sqrt(self.head_dim),
+                            )
+                if attn_output is None and not compressed_prefill_only:
                     # Shape unsupported by the custom kernel: decode the already
                     # appended compressed cache once and continue through SDPA.
                     key_states = key_cache._decode_range(0, cache_len)

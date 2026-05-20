@@ -3,9 +3,16 @@ import torch
 import csv
 import gc
 import re
-from threading import Thread
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from medusa.model.medusa_model import MedusaModel
+
+TARGET_NEW_TOKENS = 200
+
+
+def sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
 
 # The Full 10-Prompt Test Suite
 TEST_SUITE = [
@@ -39,38 +46,35 @@ for i, test in enumerate(TEST_SUITE):
     full_prompt = f"<|user|>\n{test['prompt']}\n<|assistant|>\n"
     inputs = tokenizer(full_prompt, return_tensors="pt").to("cuda")
     prompt_len = inputs.input_ids.shape[1]
-    
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True)
-    generation_kwargs = dict(inputs, max_new_tokens=200, do_sample=False, streamer=streamer)
-    
-    start_time = time.time()
-    thread = Thread(target=baseline_model.generate, kwargs=generation_kwargs)
-    thread.start()
-    
-    first_token_time = 0
-    generated_text = ""
-    token_count = 0
-    
-    for new_text in streamer:
-        if first_token_time == 0:
-            first_token_time = time.time()
-        generated_text += new_text
-        token_count += 1
-        
-    thread.join()
-    end_time = time.time()
+
+    sync()
+    start_time = time.perf_counter()
+    with torch.inference_mode():
+        output_ids = baseline_model.generate(
+            **inputs,
+            max_new_tokens=TARGET_NEW_TOKENS,
+            do_sample=False,
+            use_cache=True,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    sync()
+    end_time = time.perf_counter()
+
+    generated_ids = output_ids[0, prompt_len:]
+    generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+    token_count = int(generated_ids.shape[0])
     
     baseline_texts_dict[i] = generated_text
     
-    ttft = first_token_time - start_time 
-    decode_time = end_time - first_token_time 
+    ttft = ""
+    decode_time = end_time - start_time
     tpot = decode_time / (token_count - 1) if token_count > 1 else 0 
     
     tps = token_count / (end_time - start_time)
     
     results.append({
         "Prompt_ID": i+1, "Category": test["category"], "Mode": "Baseline", 
-        "Tokens": token_count, "Compute_TTFT_Sec": round(ttft, 3), 
+        "Tokens": token_count, "Compute_TTFT_Sec": ttft,
         "Memory_Decode_Sec": round(decode_time, 2), "TPOT_ms": round(tpot * 1000, 2),
         "Overall_TPS": round(tps, 2), "Exact_Match": "N/A"
     })
@@ -94,18 +98,24 @@ for i, test in enumerate(TEST_SUITE):
     print(f"  -> Profiling Medusa {i+1}/10: {test['category']}")
     full_prompt = f"<|user|>\n{test['prompt']}\n<|assistant|>\n"
     inputs = tokenizer(full_prompt, return_tensors="pt").to("cuda")
-    
-    start_time = time.time()
-    first_token_time = 0
-    
-    with torch.no_grad():
-        output_stream = medusa_model.medusa_generate(inputs.input_ids, temperature=0.0, max_steps=200)
+
+    sync()
+    start_time = time.perf_counter()
+
+    with torch.inference_mode():
+        output_stream = medusa_model.medusa_generate(
+            inputs.input_ids,
+            temperature=0.0,
+            max_steps=200,
+            max_new_tokens=TARGET_NEW_TOKENS,
+            stream=False,
+            collect_stats=True,
+        )
         for current_output in output_stream:
-            if first_token_time == 0:
-                first_token_time = time.time()
             final_data = current_output
-            
-    end_time = time.time()
+
+    sync()
+    end_time = time.perf_counter()
     
     medusa_gen_text = final_data["text"]
     
@@ -114,18 +124,21 @@ for i, test in enumerate(TEST_SUITE):
     compare_length = min(len(base_clean), len(med_clean))
     is_match = base_clean[:compare_length] == med_clean[:compare_length] if compare_length > 0 else False
     
-    gen_tokens = len(tokenizer.encode(medusa_gen_text, add_special_tokens=False))
-    if gen_tokens <= 0: gen_tokens = 1
-    
-    ttft = first_token_time - start_time
-    decode_time = end_time - first_token_time
+    gen_tokens = int(final_data.get("stats", {}).get("generated_tokens", 0))
+    if gen_tokens <= 0:
+        gen_tokens = len(tokenizer(medusa_gen_text, add_special_tokens=False).input_ids)
+    if gen_tokens <= 0:
+        gen_tokens = 1
+
+    ttft = ""
+    decode_time = end_time - start_time
     tpot = decode_time / (gen_tokens - 1) if gen_tokens > 1 else 0
     
     tps = gen_tokens / (end_time - start_time)
     
     results.append({
         "Prompt_ID": i+1, "Category": test["category"], "Mode": "Medusa", 
-        "Tokens": gen_tokens, "Compute_TTFT_Sec": round(ttft, 3), 
+        "Tokens": gen_tokens, "Compute_TTFT_Sec": ttft,
         "Memory_Decode_Sec": round(decode_time, 2), "TPOT_ms": round(tpot * 1000, 2),
         "Overall_TPS": round(tps, 2), "Exact_Match": is_match
     })

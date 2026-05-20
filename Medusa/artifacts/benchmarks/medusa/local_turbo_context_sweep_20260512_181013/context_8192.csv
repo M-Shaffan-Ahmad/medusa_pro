@@ -1,0 +1,20 @@
+category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,turbo_vq_kv_mb_est,turbo_vq_compressed_kv_mb_est,turbo_vq_transfer_reduction,turbo_vq_key_algorithmic_bits,turbo_vq_value_bits,turbo_vq_actual_bits_per_channel_est,turbo_vq_key_qidx_bytes_per_token_head,turbo_vq_value_qidx_bytes_per_token_head,polar_kv_mb_est,polar_transfer_reduction,polar_algorithmic_bits_per_channel,polar_angle_bytes_per_token_head,polar_radius_bytes_per_token_head,paper_metric_seed,paper_metric_tokens,paper_turbo_mse_rel,paper_turbo_prod_ip_mse_mse,paper_turbo_prod_ip_mse_qjl,paper_turbo_prod_ip_bias,paper_turbo_attention_mse,paper_polar_recon_rel,paper_polar_attention_mse,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,text
+long_context_8192t,medusa_base,32,8068,1.3333333333333333,1.6842105263157894,64.0,2.1351471850000507,2.1351111920000676,14.987257189953038,1.0,1.0,3709.0166015625,3956.0,131072,0.061798095703125,253.125,148.3154296875,1.7066666666666668,148.3154296875,148.3154296875,1.7066666666666668,9.0,8.0,9.375,64,64,61.3037109375,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,798,19,medusa,0,19,19,32,9248,8260,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,798,0,fixed,0,1216,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+"
+long_context_8192t,turboquant_prod_b4_full_tree,32,8068,1.3333333333333333,1.6,64.0,4.294570173000011,4.294525904000011,7.451269559217869,0.4971736632512688,1.0,3512.7802734375,3706.0,131072,0.061798095703125,253.125,69.2138671875,3.657142857142857,69.2138671875,69.2138671875,3.657142857142857,4.0,4.0,4.375,24,32,61.3037109375,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,840,20,medusa,0,20,20,32,9248,8260,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,840,0,fixed,0,1280,"Here is a compact Python module that implements a benchmark timer, validates inputs, and reports the fastest implementation:
+```
+import time
+import random
+import logging
+
+"
+long_context_8192t,turboquant_prod_outlier_k4v4_c16_full_tree,28,8068,1.1666666666666667,1.1666666666666667,64.0,10.389628937999987,10.389596281000081,2.6949951886722556,0.17981910595882022,0.06451612903225806,3507.3291015625,3722.0,131072,0.061767578125,253.0,57.3203125,4.413793103448276,57.3203125,57.3203125,4.413793103448276,3.25,3.25,3.625,18,26,61.2734375,4.129032258064516,3.875,23,8,,,,,,,,,,0,0,63,0,1008,24,medusa,0,24,24,28,9248,8260,0,63,4,131072,0,0,0,0,16384,0,0,0,0,0,1008,0,fixed,0,1536,"Here's first, butn. "" аt the - ""At this is a -1. (b
+
+A is not-.
+
+"

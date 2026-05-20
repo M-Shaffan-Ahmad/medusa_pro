@@ -1,3 +1,5 @@
+import os
+
 import torch
 
 try:
@@ -13,6 +15,11 @@ except Exception:  # pragma: no cover - optional CUDA fast path
 
 def _is_cuda_tensor(tensor):
     return isinstance(tensor, torch.Tensor) and tensor.is_cuda
+
+
+def _debug_triton_failure(name, exc):
+    if os.environ.get("MEDUSA_TRITON_DEBUG"):
+        print(f"{name} failed: {type(exc).__name__}: {exc}")
 
 
 if TRITON_AVAILABLE:
@@ -87,12 +94,14 @@ if TRITON_AVAILABLE:
             mask=w_offsets < words,
             other=0,
         )
+        valid = (k_offsets[:, None] < kv_len) & (w_offsets[None, :] < words)
         k = tl.load(
             key_bits + (head * max_length + k_offsets[:, None]) * words + w_offsets[None, :],
-            mask=(k_offsets[:, None] < kv_len) & (w_offsets[None, :] < words),
+            mask=valid,
             other=0,
         )
         matches = _popcount_u32(~(q[None, :] ^ k))
+        matches = tl.where(valid, matches, 0)
         score_by_word = tl.sum(matches, axis=0)
         score = tl.sum(score_by_word, axis=0)
         tl.store(partial + (node * num_heads + head) * num_blocks + block, score)
@@ -978,15 +987,20 @@ if TRITON_AVAILABLE:
         input_len: tl.constexpr,
         max_length: tl.constexpr,
         head_dim: tl.constexpr,
+        q_idx_bits: tl.constexpr,
+        q_idx_packed_dim: tl.constexpr,
         num_boundaries: tl.constexpr,
         BLOCK_D: tl.constexpr,
+        BLOCK_Q: tl.constexpr,
         BLOCK_B: tl.constexpr,
     ):
         head = tl.program_id(0)
         rel_pos = tl.program_id(1)
         dim_offsets = tl.arange(0, BLOCK_D)
+        q_pack_offsets = tl.arange(0, BLOCK_Q)
         boundary_offsets = tl.arange(0, BLOCK_B)
         dim_mask = dim_offsets < head_dim
+        pack_mask = q_pack_offsets < q_idx_packed_dim
         boundary_mask = boundary_offsets < num_boundaries
 
         src_base = head * input_stride_h + rel_pos * input_stride_t
@@ -1018,10 +1032,36 @@ if TRITON_AVAILABLE:
         dst_pos = start_pos + rel_pos
         dst_base = head * max_length + dst_pos
         tl.store(scale_out + dst_base, scale)
+
+        bit_offsets = dim_offsets * q_idx_bits
+        byte_offsets = bit_offsets // 8
+        bit_shifts = bit_offsets - (byte_offsets * 8)
+        q_idx_i32 = q_idx.to(tl.int32)
+        low = (q_idx_i32 << bit_shifts) & 0xFF
+        low = tl.where(dim_mask, low, 0)
+        packed_q = tl.sum(
+            tl.where(
+                byte_offsets[None, :] == q_pack_offsets[:, None],
+                low[None, :],
+                0,
+            ),
+            axis=1,
+        )
+        spill = (bit_shifts + q_idx_bits) > 8
+        high = q_idx_i32 >> (8 - bit_shifts)
+        high = tl.where(dim_mask & spill, high, 0)
+        packed_q += tl.sum(
+            tl.where(
+                (byte_offsets[None, :] + 1) == q_pack_offsets[:, None],
+                high[None, :],
+                0,
+            ),
+            axis=1,
+        )
         tl.store(
-            q_idx_out + dst_base * head_dim + dim_offsets,
-            q_idx.to(tl.uint8),
-            mask=dim_mask & (rel_pos < input_len),
+            q_idx_out + dst_base * q_idx_packed_dim + q_pack_offsets,
+            packed_q.to(tl.uint8),
+            mask=pack_mask & (rel_pos < input_len),
         )
 
 
@@ -1044,10 +1084,13 @@ if TRITON_AVAILABLE:
         input_len: tl.constexpr,
         max_length: tl.constexpr,
         head_dim: tl.constexpr,
+        q_idx_bits: tl.constexpr,
+        q_idx_packed_dim: tl.constexpr,
         residual_dim: tl.constexpr,
         residual_packed_dim: tl.constexpr,
         num_boundaries: tl.constexpr,
         BLOCK_D: tl.constexpr,
+        BLOCK_Q: tl.constexpr,
         BLOCK_R: tl.constexpr,
         BLOCK_P: tl.constexpr,
         BLOCK_B: tl.constexpr,
@@ -1055,10 +1098,12 @@ if TRITON_AVAILABLE:
         head = tl.program_id(0)
         rel_pos = tl.program_id(1)
         dim_offsets = tl.arange(0, BLOCK_D)
+        q_pack_offsets = tl.arange(0, BLOCK_Q)
         residual_offsets = tl.arange(0, BLOCK_R)
         pack_offsets = tl.arange(0, BLOCK_P)
         boundary_offsets = tl.arange(0, BLOCK_B)
         dim_mask = dim_offsets < head_dim
+        q_pack_mask = q_pack_offsets < q_idx_packed_dim
         residual_mask = residual_offsets < residual_dim
         pack_mask = pack_offsets < residual_packed_dim
         boundary_mask = boundary_offsets < num_boundaries
@@ -1092,10 +1137,36 @@ if TRITON_AVAILABLE:
         dst_pos = start_pos + rel_pos
         dst_base = head * max_length + dst_pos
         tl.store(scale_out + dst_base, scale)
+
+        bit_offsets_q = dim_offsets * q_idx_bits
+        byte_offsets_q = bit_offsets_q // 8
+        bit_shifts_q = bit_offsets_q - (byte_offsets_q * 8)
+        q_idx_i32 = q_idx.to(tl.int32)
+        low_q = (q_idx_i32 << bit_shifts_q) & 0xFF
+        low_q = tl.where(dim_mask, low_q, 0)
+        packed_q = tl.sum(
+            tl.where(
+                byte_offsets_q[None, :] == q_pack_offsets[:, None],
+                low_q[None, :],
+                0,
+            ),
+            axis=1,
+        )
+        spill_q = (bit_shifts_q + q_idx_bits) > 8
+        high_q = q_idx_i32 >> (8 - bit_shifts_q)
+        high_q = tl.where(dim_mask & spill_q, high_q, 0)
+        packed_q += tl.sum(
+            tl.where(
+                (byte_offsets_q[None, :] + 1) == q_pack_offsets[:, None],
+                high_q[None, :],
+                0,
+            ),
+            axis=1,
+        )
         tl.store(
-            q_idx_out + dst_base * head_dim + dim_offsets,
-            q_idx.to(tl.uint8),
-            mask=dim_mask & (rel_pos < input_len),
+            q_idx_out + dst_base * q_idx_packed_dim + q_pack_offsets,
+            packed_q.to(tl.uint8),
+            mask=q_pack_mask & (rel_pos < input_len),
         )
 
         code = tl.load(codebook + q_idx, mask=dim_mask, other=0.0).to(tl.float32) * scale
@@ -1135,6 +1206,42 @@ if TRITON_AVAILABLE:
 
 
     @triton.jit
+    def _load_turbo_vq_q_idx(
+        q_idx,
+        cache_base,
+        dim_offsets,
+        mask,
+        q_idx_bits: tl.constexpr,
+        q_idx_packed_dim: tl.constexpr,
+    ):
+        bit_offsets = dim_offsets * q_idx_bits
+        byte_offsets = bit_offsets // 8
+        bit_shifts = bit_offsets - (byte_offsets * 8)
+        byte_base = cache_base[:, None] * q_idx_packed_dim
+
+        low = tl.load(
+            q_idx + byte_base + byte_offsets[None, :],
+            mask=mask,
+            other=0,
+        ).to(tl.int32)
+        values = low >> bit_shifts[None, :]
+
+        spill = (bit_shifts + q_idx_bits) > 8
+        high_byte_offsets = tl.minimum(byte_offsets + 1, q_idx_packed_dim - 1)
+        high = tl.load(
+            q_idx + byte_base + high_byte_offsets[None, :],
+            mask=mask & spill[None, :],
+            other=0,
+        ).to(tl.int32)
+        values = tl.where(
+            spill[None, :],
+            values | (high << (8 - bit_shifts[None, :])),
+            values,
+        )
+        return values & ((1 << q_idx_bits) - 1)
+
+
+    @triton.jit
     def _turbo_vq_compressed_attention_decode_kernel(
         query,
         key_q_idx,
@@ -1157,6 +1264,10 @@ if TRITON_AVAILABLE:
         max_length: tl.constexpr,
         num_key_value_groups: tl.constexpr,
         head_dim: tl.constexpr,
+        key_q_idx_bits: tl.constexpr,
+        key_q_idx_packed_dim: tl.constexpr,
+        value_q_idx_bits: tl.constexpr,
+        value_q_idx_packed_dim: tl.constexpr,
         residual_dim: tl.constexpr,
         residual_packed_dim: tl.constexpr,
         residual_coeff: tl.constexpr,
@@ -1204,10 +1315,16 @@ if TRITON_AVAILABLE:
             kv_offsets = block_start + kv_offsets_base
             kv_mask = kv_offsets < kv_len
             cache_base = kv_head * max_length + kv_offsets
-            kv_dim_base = cache_base[:, None] * head_dim + dim_offsets[None, :]
             kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
 
-            key_idx = tl.load(key_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            key_idx = _load_turbo_vq_q_idx(
+                key_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                key_q_idx_bits,
+                key_q_idx_packed_dim,
+            )
             key_code = tl.load(key_codebook + key_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             key_scales = tl.load(key_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             key_rot = key_code * key_scales[:, None]
@@ -1242,7 +1359,14 @@ if TRITON_AVAILABLE:
             p = tl.exp(scores - m_new)
             alpha = tl.exp(m_i - m_new)
 
-            value_idx = tl.load(value_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            value_idx = _load_turbo_vq_q_idx(
+                value_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                value_q_idx_bits,
+                value_q_idx_packed_dim,
+            )
             value_code = tl.load(value_codebook + value_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             value_scales = tl.load(value_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             value_rot = value_code * value_scales[:, None]
@@ -1290,6 +1414,10 @@ if TRITON_AVAILABLE:
         hot_capacity: tl.constexpr,
         num_key_value_groups: tl.constexpr,
         head_dim: tl.constexpr,
+        key_q_idx_bits: tl.constexpr,
+        key_q_idx_packed_dim: tl.constexpr,
+        value_q_idx_bits: tl.constexpr,
+        value_q_idx_packed_dim: tl.constexpr,
         residual_dim: tl.constexpr,
         residual_packed_dim: tl.constexpr,
         residual_coeff: tl.constexpr,
@@ -1343,10 +1471,16 @@ if TRITON_AVAILABLE:
             kv_offsets = block_start + kv_offsets_base
             kv_mask = kv_offsets < old_len
             cache_base = kv_head * max_length + kv_offsets
-            kv_dim_base = cache_base[:, None] * head_dim + dim_offsets[None, :]
             kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
 
-            key_idx = tl.load(key_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            key_idx = _load_turbo_vq_q_idx(
+                key_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                key_q_idx_bits,
+                key_q_idx_packed_dim,
+            )
             key_code = tl.load(key_codebook + key_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             key_scales = tl.load(key_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             key_rot = key_code * key_scales[:, None]
@@ -1381,7 +1515,14 @@ if TRITON_AVAILABLE:
             p = tl.exp(scores - m_new)
             alpha = tl.exp(m_i - m_new)
 
-            value_idx = tl.load(value_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            value_idx = _load_turbo_vq_q_idx(
+                value_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                value_q_idx_bits,
+                value_q_idx_packed_dim,
+            )
             value_code = tl.load(value_codebook + value_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             value_scales = tl.load(value_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             value_rot = value_code * value_scales[:, None]
@@ -1427,6 +1568,534 @@ if TRITON_AVAILABLE:
 
 
     @triton.jit
+    def _turbo_vq_hybrid_attention_block_kernel(
+        query,
+        key_q_idx,
+        key_scale,
+        key_codebook,
+        key_rotation_t,
+        key_residual_sign_packed,
+        key_residual_norm,
+        key_residual_proj,
+        value_q_idx,
+        value_scale,
+        value_codebook,
+        value_rotation_t,
+        key_hot,
+        value_hot,
+        attention_mask,
+        out,
+        kv_len,
+        old_len,
+        query_stride_h,
+        query_stride_q,
+        query_stride_d,
+        max_length: tl.constexpr,
+        hot_capacity: tl.constexpr,
+        q_len: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        key_q_idx_bits: tl.constexpr,
+        key_q_idx_packed_dim: tl.constexpr,
+        value_q_idx_bits: tl.constexpr,
+        value_q_idx_packed_dim: tl.constexpr,
+        residual_dim: tl.constexpr,
+        residual_packed_dim: tl.constexpr,
+        residual_coeff: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        is_causal: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_D: tl.constexpr,
+        BLOCK_R: tl.constexpr,
+    ):
+        q_block = tl.program_id(0)
+        q_head = tl.program_id(1)
+        kv_head = q_head // num_key_value_groups
+
+        q_offsets = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        dim_offsets = tl.arange(0, BLOCK_D)
+        residual_offsets = tl.arange(0, BLOCK_R)
+
+        q_mask = q_offsets < q_len
+        dim_mask = dim_offsets < head_dim
+        residual_mask = residual_offsets < residual_dim
+
+        q_base = q_head * query_stride_h + q_offsets[:, None] * query_stride_q
+        q_vals = tl.load(
+            query + q_base + dim_offsets[None, :] * query_stride_d,
+            mask=q_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        rot_for_q = tl.load(
+            key_rotation_t + dim_offsets[None, :] * head_dim + dim_offsets[:, None],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_rot = tl.dot(q_vals, rot_for_q, input_precision="ieee")
+
+        residual_proj = tl.load(
+            key_residual_proj + dim_offsets[:, None] * residual_dim + residual_offsets[None, :],
+            mask=dim_mask[:, None] & residual_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_residual_proj = tl.dot(q_vals, residual_proj, input_precision="ieee")
+
+        rot_for_out = tl.load(
+            value_rotation_t + dim_offsets[:, None] * head_dim + dim_offsets[None, :],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc_rot = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        acc_hot = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        m_i = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((BLOCK_M,), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, old_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < old_len
+            cache_base = kv_head * max_length + kv_offsets
+            kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_idx = _load_turbo_vq_q_idx(
+                key_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                key_q_idx_bits,
+                key_q_idx_packed_dim,
+            )
+            key_code = tl.load(key_codebook + key_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
+            key_scales = tl.load(key_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            key_rot = key_code * key_scales[:, None]
+
+            scores = tl.dot(q_rot, tl.trans(key_rot), input_precision="ieee")
+
+            pack_offsets = residual_offsets // 8
+            bit_offsets = residual_offsets - (pack_offsets * 8)
+            sign_base = cache_base[:, None] * residual_packed_dim + pack_offsets[None, :]
+            packed = tl.load(
+                key_residual_sign_packed + sign_base,
+                mask=kv_mask[:, None] & residual_mask[None, :],
+                other=0,
+            ).to(tl.int32)
+            sign_bits = (packed >> bit_offsets[None, :]) & 1
+            signs = sign_bits.to(tl.float32) * 2.0 - 1.0
+            signs = tl.where(residual_mask[None, :], signs, 0.0)
+            residual_inner = tl.dot(q_residual_proj, tl.trans(signs), input_precision="ieee")
+            residual_norm = tl.load(
+                key_residual_norm + cache_base,
+                mask=kv_mask,
+                other=0.0,
+            ).to(tl.float32)
+            scores += residual_coeff * residual_inner * residual_norm[None, :]
+
+            scores *= sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_idx = _load_turbo_vq_q_idx(
+                value_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                value_q_idx_bits,
+                value_q_idx_packed_dim,
+            )
+            value_code = tl.load(value_codebook + value_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
+            value_scales = tl.load(value_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            value_rot = value_code * value_scales[:, None]
+
+            acc_rot = (acc_rot * alpha[:, None]) + tl.dot(p, value_rot, input_precision="ieee")
+            acc_hot = acc_hot * alpha[:, None]
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        hot_len = kv_len - old_len
+        for hot_block_start in tl.range(0, hot_len, BLOCK_N):
+            hot_offsets = hot_block_start + kv_offsets_base
+            kv_offsets = old_len + hot_offsets
+            kv_mask = kv_offsets < kv_len
+            hot_slots = kv_offsets - (kv_offsets // hot_capacity) * hot_capacity
+            hot_base = kv_head * hot_capacity + hot_slots
+            hot_dim_base = hot_base[:, None] * head_dim + dim_offsets[None, :]
+            hot_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_vals = tl.load(key_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            scores = tl.dot(q_vals, tl.trans(key_vals), input_precision="ieee") * sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_vals = tl.load(value_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            acc_rot = acc_rot * alpha[:, None]
+            acc_hot = (acc_hot * alpha[:, None]) + tl.dot(p, value_vals, input_precision="ieee")
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        inv_l = 1.0 / tl.maximum(l_i, 1.0e-20)
+        old_vals = tl.dot(acc_rot * inv_l[:, None], rot_for_out, input_precision="ieee")
+        hot_vals = acc_hot * inv_l[:, None]
+        out_vals = old_vals + hot_vals
+        out_offsets = (q_head * q_len + q_offsets[:, None]) * head_dim
+        tl.store(
+            out + out_offsets + dim_offsets[None, :],
+            out_vals,
+            mask=q_mask[:, None] & dim_mask[None, :],
+        )
+
+
+    @triton.jit
+    def _turbo_vq_hybrid_outlier_attention_block_kernel(
+        query,
+        regular_idx,
+        outlier_idx,
+        key_regular_q_idx,
+        key_regular_scale,
+        key_regular_codebook,
+        key_regular_rotation_t,
+        key_regular_residual_sign_packed,
+        key_regular_residual_norm,
+        key_regular_residual_proj,
+        key_outlier_q_idx,
+        key_outlier_scale,
+        key_outlier_codebook,
+        key_outlier_rotation_t,
+        key_outlier_residual_sign_packed,
+        key_outlier_residual_norm,
+        key_outlier_residual_proj,
+        value_regular_q_idx,
+        value_regular_scale,
+        value_regular_codebook,
+        value_regular_rotation_t,
+        value_outlier_q_idx,
+        value_outlier_scale,
+        value_outlier_codebook,
+        value_outlier_rotation_t,
+        key_hot,
+        value_hot,
+        attention_mask,
+        out,
+        kv_len,
+        old_len,
+        query_stride_h,
+        query_stride_q,
+        query_stride_d,
+        max_length: tl.constexpr,
+        hot_capacity: tl.constexpr,
+        q_len: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        regular_dim: tl.constexpr,
+        outlier_dim: tl.constexpr,
+        key_regular_q_idx_bits: tl.constexpr,
+        key_regular_q_idx_packed_dim: tl.constexpr,
+        key_outlier_q_idx_bits: tl.constexpr,
+        key_outlier_q_idx_packed_dim: tl.constexpr,
+        value_regular_q_idx_bits: tl.constexpr,
+        value_regular_q_idx_packed_dim: tl.constexpr,
+        value_outlier_q_idx_bits: tl.constexpr,
+        value_outlier_q_idx_packed_dim: tl.constexpr,
+        regular_residual_dim: tl.constexpr,
+        regular_residual_packed_dim: tl.constexpr,
+        regular_residual_coeff: tl.constexpr,
+        outlier_residual_dim: tl.constexpr,
+        outlier_residual_packed_dim: tl.constexpr,
+        outlier_residual_coeff: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        is_causal: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_REG: tl.constexpr,
+        BLOCK_OUT: tl.constexpr,
+        BLOCK_RREG: tl.constexpr,
+        BLOCK_ROUT: tl.constexpr,
+    ):
+        q_block = tl.program_id(0)
+        q_head = tl.program_id(1)
+        kv_head = q_head // num_key_value_groups
+
+        q_offsets = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        reg_offsets = tl.arange(0, BLOCK_REG)
+        out_offsets = tl.arange(0, BLOCK_OUT)
+        rreg_offsets = tl.arange(0, BLOCK_RREG)
+        rout_offsets = tl.arange(0, BLOCK_ROUT)
+
+        q_mask = q_offsets < q_len
+        reg_mask = reg_offsets < regular_dim
+        out_mask = out_offsets < outlier_dim
+        rreg_mask = rreg_offsets < regular_residual_dim
+        rout_mask = rout_offsets < outlier_residual_dim
+
+        orig_reg = tl.load(regular_idx + reg_offsets, mask=reg_mask, other=0)
+        orig_out = tl.load(outlier_idx + out_offsets, mask=out_mask, other=0)
+
+        q_base = q_head * query_stride_h + q_offsets[:, None] * query_stride_q
+        q_reg_vals = tl.load(
+            query + q_base + orig_reg[None, :] * query_stride_d,
+            mask=q_mask[:, None] & reg_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_out_vals = tl.load(
+            query + q_base + orig_out[None, :] * query_stride_d,
+            mask=q_mask[:, None] & out_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        reg_rot_for_q = tl.load(
+            key_regular_rotation_t + reg_offsets[None, :] * regular_dim + reg_offsets[:, None],
+            mask=reg_mask[:, None] & reg_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        out_rot_for_q = tl.load(
+            key_outlier_rotation_t + out_offsets[None, :] * outlier_dim + out_offsets[:, None],
+            mask=out_mask[:, None] & out_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_reg_rot = tl.dot(q_reg_vals, reg_rot_for_q, input_precision="ieee")
+        q_out_rot = tl.dot(q_out_vals, out_rot_for_q, input_precision="ieee")
+
+        reg_residual_proj = tl.load(
+            key_regular_residual_proj + reg_offsets[:, None] * regular_residual_dim + rreg_offsets[None, :],
+            mask=reg_mask[:, None] & rreg_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        out_residual_proj = tl.load(
+            key_outlier_residual_proj + out_offsets[:, None] * outlier_residual_dim + rout_offsets[None, :],
+            mask=out_mask[:, None] & rout_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_reg_residual_proj = tl.dot(q_reg_vals, reg_residual_proj, input_precision="ieee")
+        q_out_residual_proj = tl.dot(q_out_vals, out_residual_proj, input_precision="ieee")
+
+        acc_reg_rot = tl.zeros((BLOCK_M, BLOCK_REG), dtype=tl.float32)
+        acc_out_rot = tl.zeros((BLOCK_M, BLOCK_OUT), dtype=tl.float32)
+        acc_reg_hot = tl.zeros((BLOCK_M, BLOCK_REG), dtype=tl.float32)
+        acc_out_hot = tl.zeros((BLOCK_M, BLOCK_OUT), dtype=tl.float32)
+        m_i = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((BLOCK_M,), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, old_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < old_len
+            cache_base = kv_head * max_length + kv_offsets
+            reg_dim_mask = kv_mask[:, None] & reg_mask[None, :]
+            out_dim_mask = kv_mask[:, None] & out_mask[None, :]
+
+            key_reg_idx = _load_turbo_vq_q_idx(
+                key_regular_q_idx,
+                cache_base,
+                reg_offsets,
+                reg_dim_mask,
+                key_regular_q_idx_bits,
+                key_regular_q_idx_packed_dim,
+            )
+            key_reg_code = tl.load(key_regular_codebook + key_reg_idx, mask=reg_dim_mask, other=0.0).to(tl.float32)
+            key_reg_scales = tl.load(key_regular_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            key_reg_rot = key_reg_code * key_reg_scales[:, None]
+            scores = tl.dot(q_reg_rot, tl.trans(key_reg_rot), input_precision="ieee")
+
+            key_out_idx = _load_turbo_vq_q_idx(
+                key_outlier_q_idx,
+                cache_base,
+                out_offsets,
+                out_dim_mask,
+                key_outlier_q_idx_bits,
+                key_outlier_q_idx_packed_dim,
+            )
+            key_out_code = tl.load(key_outlier_codebook + key_out_idx, mask=out_dim_mask, other=0.0).to(tl.float32)
+            key_out_scales = tl.load(key_outlier_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            key_out_rot = key_out_code * key_out_scales[:, None]
+            scores += tl.dot(q_out_rot, tl.trans(key_out_rot), input_precision="ieee")
+
+            rreg_pack_offsets = rreg_offsets // 8
+            rreg_bit_offsets = rreg_offsets - (rreg_pack_offsets * 8)
+            rreg_sign_base = cache_base[:, None] * regular_residual_packed_dim + rreg_pack_offsets[None, :]
+            rreg_packed = tl.load(
+                key_regular_residual_sign_packed + rreg_sign_base,
+                mask=kv_mask[:, None] & rreg_mask[None, :],
+                other=0,
+            ).to(tl.int32)
+            rreg_sign_bits = (rreg_packed >> rreg_bit_offsets[None, :]) & 1
+            rreg_signs = rreg_sign_bits.to(tl.float32) * 2.0 - 1.0
+            rreg_signs = tl.where(rreg_mask[None, :], rreg_signs, 0.0)
+            rreg_inner = tl.dot(q_reg_residual_proj, tl.trans(rreg_signs), input_precision="ieee")
+            rreg_norm = tl.load(key_regular_residual_norm + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            scores += regular_residual_coeff * rreg_inner * rreg_norm[None, :]
+
+            rout_pack_offsets = rout_offsets // 8
+            rout_bit_offsets = rout_offsets - (rout_pack_offsets * 8)
+            rout_sign_base = cache_base[:, None] * outlier_residual_packed_dim + rout_pack_offsets[None, :]
+            rout_packed = tl.load(
+                key_outlier_residual_sign_packed + rout_sign_base,
+                mask=kv_mask[:, None] & rout_mask[None, :],
+                other=0,
+            ).to(tl.int32)
+            rout_sign_bits = (rout_packed >> rout_bit_offsets[None, :]) & 1
+            rout_signs = rout_sign_bits.to(tl.float32) * 2.0 - 1.0
+            rout_signs = tl.where(rout_mask[None, :], rout_signs, 0.0)
+            rout_inner = tl.dot(q_out_residual_proj, tl.trans(rout_signs), input_precision="ieee")
+            rout_norm = tl.load(key_outlier_residual_norm + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            scores += outlier_residual_coeff * rout_inner * rout_norm[None, :]
+
+            scores *= sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_reg_idx = _load_turbo_vq_q_idx(
+                value_regular_q_idx,
+                cache_base,
+                reg_offsets,
+                reg_dim_mask,
+                value_regular_q_idx_bits,
+                value_regular_q_idx_packed_dim,
+            )
+            value_reg_code = tl.load(value_regular_codebook + value_reg_idx, mask=reg_dim_mask, other=0.0).to(tl.float32)
+            value_reg_scales = tl.load(value_regular_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            value_reg_rot = value_reg_code * value_reg_scales[:, None]
+
+            value_out_idx = _load_turbo_vq_q_idx(
+                value_outlier_q_idx,
+                cache_base,
+                out_offsets,
+                out_dim_mask,
+                value_outlier_q_idx_bits,
+                value_outlier_q_idx_packed_dim,
+            )
+            value_out_code = tl.load(value_outlier_codebook + value_out_idx, mask=out_dim_mask, other=0.0).to(tl.float32)
+            value_out_scales = tl.load(value_outlier_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
+            value_out_rot = value_out_code * value_out_scales[:, None]
+
+            acc_reg_rot = (acc_reg_rot * alpha[:, None]) + tl.dot(p, value_reg_rot, input_precision="ieee")
+            acc_out_rot = (acc_out_rot * alpha[:, None]) + tl.dot(p, value_out_rot, input_precision="ieee")
+            acc_reg_hot = acc_reg_hot * alpha[:, None]
+            acc_out_hot = acc_out_hot * alpha[:, None]
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        hot_len = kv_len - old_len
+        for hot_block_start in tl.range(0, hot_len, BLOCK_N):
+            hot_offsets = hot_block_start + kv_offsets_base
+            kv_offsets = old_len + hot_offsets
+            kv_mask = kv_offsets < kv_len
+            hot_slots = kv_offsets - (kv_offsets // hot_capacity) * hot_capacity
+            hot_base = kv_head * hot_capacity + hot_slots
+
+            key_reg_hot_base = hot_base[:, None] * head_dim + orig_reg[None, :]
+            key_out_hot_base = hot_base[:, None] * head_dim + orig_out[None, :]
+            hot_reg_mask = kv_mask[:, None] & reg_mask[None, :]
+            hot_out_mask = kv_mask[:, None] & out_mask[None, :]
+            key_reg_vals = tl.load(key_hot + key_reg_hot_base, mask=hot_reg_mask, other=0.0).to(tl.float32)
+            key_out_vals = tl.load(key_hot + key_out_hot_base, mask=hot_out_mask, other=0.0).to(tl.float32)
+
+            scores = tl.dot(q_reg_vals, tl.trans(key_reg_vals), input_precision="ieee")
+            scores += tl.dot(q_out_vals, tl.trans(key_out_vals), input_precision="ieee")
+            scores *= sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_reg_vals = tl.load(value_hot + key_reg_hot_base, mask=hot_reg_mask, other=0.0).to(tl.float32)
+            value_out_vals = tl.load(value_hot + key_out_hot_base, mask=hot_out_mask, other=0.0).to(tl.float32)
+
+            acc_reg_rot = acc_reg_rot * alpha[:, None]
+            acc_out_rot = acc_out_rot * alpha[:, None]
+            acc_reg_hot = (acc_reg_hot * alpha[:, None]) + tl.dot(p, value_reg_vals, input_precision="ieee")
+            acc_out_hot = (acc_out_hot * alpha[:, None]) + tl.dot(p, value_out_vals, input_precision="ieee")
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        inv_l = 1.0 / tl.maximum(l_i, 1.0e-20)
+        reg_rot_for_out = tl.load(
+            value_regular_rotation_t + reg_offsets[:, None] * regular_dim + reg_offsets[None, :],
+            mask=reg_mask[:, None] & reg_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        out_rot_for_out = tl.load(
+            value_outlier_rotation_t + out_offsets[:, None] * outlier_dim + out_offsets[None, :],
+            mask=out_mask[:, None] & out_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        old_reg_vals = tl.dot(acc_reg_rot * inv_l[:, None], reg_rot_for_out, input_precision="ieee")
+        old_out_vals = tl.dot(acc_out_rot * inv_l[:, None], out_rot_for_out, input_precision="ieee")
+        out_reg_vals = old_reg_vals + (acc_reg_hot * inv_l[:, None])
+        out_out_vals = old_out_vals + (acc_out_hot * inv_l[:, None])
+
+        out_base = (q_head * q_len + q_offsets[:, None]) * head_dim
+        tl.store(
+            out + out_base + orig_reg[None, :],
+            out_reg_vals,
+            mask=q_mask[:, None] & reg_mask[None, :],
+        )
+        tl.store(
+            out + out_base + orig_out[None, :],
+            out_out_vals,
+            mask=q_mask[:, None] & out_mask[None, :],
+        )
+
+
+    @triton.jit
     def _turbo_vq_compressed_attention_block_kernel(
         query,
         key_q_idx,
@@ -1450,11 +2119,16 @@ if TRITON_AVAILABLE:
         q_len: tl.constexpr,
         num_key_value_groups: tl.constexpr,
         head_dim: tl.constexpr,
+        key_q_idx_bits: tl.constexpr,
+        key_q_idx_packed_dim: tl.constexpr,
+        value_q_idx_bits: tl.constexpr,
+        value_q_idx_packed_dim: tl.constexpr,
         residual_dim: tl.constexpr,
         residual_packed_dim: tl.constexpr,
         residual_coeff: tl.constexpr,
         sm_scale: tl.constexpr,
         has_mask: tl.constexpr,
+        is_causal: tl.constexpr,
         BLOCK_M: tl.constexpr,
         BLOCK_N: tl.constexpr,
         BLOCK_D: tl.constexpr,
@@ -1503,10 +2177,16 @@ if TRITON_AVAILABLE:
             kv_offsets = block_start + kv_offsets_base
             kv_mask = kv_offsets < kv_len
             cache_base = kv_head * max_length + kv_offsets
-            kv_dim_base = cache_base[:, None] * head_dim + dim_offsets[None, :]
             kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
 
-            key_idx = tl.load(key_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            key_idx = _load_turbo_vq_q_idx(
+                key_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                key_q_idx_bits,
+                key_q_idx_packed_dim,
+            )
             key_code = tl.load(key_codebook + key_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             key_scales = tl.load(key_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             key_rot = key_code * key_scales[:, None]
@@ -1538,6 +2218,10 @@ if TRITON_AVAILABLE:
 
             scores *= sm_scale
             scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
             if has_mask:
                 mask_vals = tl.load(
                     attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
@@ -1550,7 +2234,14 @@ if TRITON_AVAILABLE:
             p = tl.exp(scores - m_new[:, None])
             alpha = tl.exp(m_i - m_new)
 
-            value_idx = tl.load(value_q_idx + kv_dim_base, mask=kv_dim_mask, other=0).to(tl.int32)
+            value_idx = _load_turbo_vq_q_idx(
+                value_q_idx,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                value_q_idx_bits,
+                value_q_idx_packed_dim,
+            )
             value_code = tl.load(value_codebook + value_idx, mask=kv_dim_mask, other=0.0).to(tl.float32)
             value_scales = tl.load(value_scale + cache_base, mask=kv_mask, other=0.0).to(tl.float32)
             value_rot = value_code * value_scales[:, None]
@@ -1568,6 +2259,701 @@ if TRITON_AVAILABLE:
             other=0.0,
         ).to(tl.float32)
         out_vals = tl.dot(acc_rot, rot_for_out, input_precision="ieee")
+
+        out_offsets = (q_head * q_len + q_offsets[:, None]) * head_dim
+        tl.store(
+            out + out_offsets + dim_offsets[None, :],
+            out_vals,
+            mask=q_mask[:, None] & dim_mask[None, :],
+        )
+
+
+    @triton.jit
+    def _recursive_polar4_load_rotated(
+        final_radius,
+        angle_q0,
+        angle_q1,
+        angle_q2,
+        angle_q3,
+        angle_cos0,
+        angle_sin0,
+        angle_cos1,
+        angle_sin1,
+        angle_cos2,
+        angle_sin2,
+        angle_cos3,
+        angle_sin3,
+        cache_base,
+        dim_offsets,
+        mask,
+        final_dim: tl.constexpr,
+        angle_bits0: tl.constexpr,
+        angle_bits1: tl.constexpr,
+        angle_bits2: tl.constexpr,
+        angle_bits3: tl.constexpr,
+        angle_packed0: tl.constexpr,
+        angle_packed1: tl.constexpr,
+        angle_packed2: tl.constexpr,
+        angle_packed3: tl.constexpr,
+    ):
+        # Recursive PolarQuant reconstructs a rotated coordinate as the final
+        # radius times one cos/sin factor from each polar level.
+        angle_offsets0 = dim_offsets // 2
+        angle_offsets1 = dim_offsets // 4
+        angle_offsets2 = dim_offsets // 8
+        angle_offsets3 = dim_offsets // 16
+
+        idx0 = _load_turbo_vq_q_idx(
+            angle_q0,
+            cache_base,
+            angle_offsets0,
+            mask,
+            angle_bits0,
+            angle_packed0,
+        )
+        idx1 = _load_turbo_vq_q_idx(
+            angle_q1,
+            cache_base,
+            angle_offsets1,
+            mask,
+            angle_bits1,
+            angle_packed1,
+        )
+        idx2 = _load_turbo_vq_q_idx(
+            angle_q2,
+            cache_base,
+            angle_offsets2,
+            mask,
+            angle_bits2,
+            angle_packed2,
+        )
+        idx3 = _load_turbo_vq_q_idx(
+            angle_q3,
+            cache_base,
+            angle_offsets3,
+            mask,
+            angle_bits3,
+            angle_packed3,
+        )
+
+        cos0 = tl.load(angle_cos0 + idx0, mask=mask, other=1.0).to(tl.float32)
+        sin0 = tl.load(angle_sin0 + idx0, mask=mask, other=0.0).to(tl.float32)
+        cos1 = tl.load(angle_cos1 + idx1, mask=mask, other=1.0).to(tl.float32)
+        sin1 = tl.load(angle_sin1 + idx1, mask=mask, other=0.0).to(tl.float32)
+        cos2 = tl.load(angle_cos2 + idx2, mask=mask, other=1.0).to(tl.float32)
+        sin2 = tl.load(angle_sin2 + idx2, mask=mask, other=0.0).to(tl.float32)
+        cos3 = tl.load(angle_cos3 + idx3, mask=mask, other=1.0).to(tl.float32)
+        sin3 = tl.load(angle_sin3 + idx3, mask=mask, other=0.0).to(tl.float32)
+
+        use_cos0 = (dim_offsets - (angle_offsets0 * 2)) == 0
+        use_cos1 = (dim_offsets - (angle_offsets1 * 4)) < 2
+        use_cos2 = (dim_offsets - (angle_offsets2 * 8)) < 4
+        use_cos3 = (dim_offsets - (angle_offsets3 * 16)) < 8
+
+        factor0 = tl.where(use_cos0[None, :], cos0, sin0)
+        factor1 = tl.where(use_cos1[None, :], cos1, sin1)
+        factor2 = tl.where(use_cos2[None, :], cos2, sin2)
+        factor3 = tl.where(use_cos3[None, :], cos3, sin3)
+
+        radius = tl.load(
+            final_radius + cache_base[:, None] * final_dim + angle_offsets3[None, :],
+            mask=mask,
+            other=0.0,
+        ).to(tl.float32)
+        return tl.where(mask, radius * factor0 * factor1 * factor2 * factor3, 0.0)
+
+
+    @triton.jit
+    def _recursive_polar4_compressed_attention_decode_kernel(
+        query,
+        key_final_radius,
+        key_angle_q0,
+        key_angle_q1,
+        key_angle_q2,
+        key_angle_q3,
+        key_angle_cos0,
+        key_angle_sin0,
+        key_angle_cos1,
+        key_angle_sin1,
+        key_angle_cos2,
+        key_angle_sin2,
+        key_angle_cos3,
+        key_angle_sin3,
+        key_rotation_t,
+        value_final_radius,
+        value_angle_q0,
+        value_angle_q1,
+        value_angle_q2,
+        value_angle_q3,
+        value_angle_cos0,
+        value_angle_sin0,
+        value_angle_cos1,
+        value_angle_sin1,
+        value_angle_cos2,
+        value_angle_sin2,
+        value_angle_cos3,
+        value_angle_sin3,
+        value_rotation_t,
+        attention_mask,
+        out,
+        kv_len,
+        max_length: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        final_dim: tl.constexpr,
+        key_angle_bits0: tl.constexpr,
+        key_angle_bits1: tl.constexpr,
+        key_angle_bits2: tl.constexpr,
+        key_angle_bits3: tl.constexpr,
+        key_angle_packed0: tl.constexpr,
+        key_angle_packed1: tl.constexpr,
+        key_angle_packed2: tl.constexpr,
+        key_angle_packed3: tl.constexpr,
+        value_angle_bits0: tl.constexpr,
+        value_angle_bits1: tl.constexpr,
+        value_angle_bits2: tl.constexpr,
+        value_angle_bits3: tl.constexpr,
+        value_angle_packed0: tl.constexpr,
+        value_angle_packed1: tl.constexpr,
+        value_angle_packed2: tl.constexpr,
+        value_angle_packed3: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_D: tl.constexpr,
+    ):
+        q_head = tl.program_id(0)
+        kv_head = q_head // num_key_value_groups
+
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        dim_offsets = tl.arange(0, BLOCK_D)
+        dim_mask = dim_offsets < head_dim
+
+        q_base = q_head * head_dim
+        q_vals = tl.load(query + q_base + dim_offsets, mask=dim_mask, other=0.0).to(tl.float32)
+
+        rot_for_q = tl.load(
+            key_rotation_t + dim_offsets[None, :] * head_dim + dim_offsets[:, None],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_rot = tl.sum(q_vals[:, None] * rot_for_q, axis=0)
+
+        rot_for_out = tl.load(
+            value_rotation_t + dim_offsets[:, None] * head_dim + dim_offsets[None, :],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc_rot = tl.zeros((BLOCK_D,), dtype=tl.float32)
+        m_i = tl.full((), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, kv_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < kv_len
+            cache_base = kv_head * max_length + kv_offsets
+            kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_rot = _recursive_polar4_load_rotated(
+                key_final_radius,
+                key_angle_q0,
+                key_angle_q1,
+                key_angle_q2,
+                key_angle_q3,
+                key_angle_cos0,
+                key_angle_sin0,
+                key_angle_cos1,
+                key_angle_sin1,
+                key_angle_cos2,
+                key_angle_sin2,
+                key_angle_cos3,
+                key_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                key_angle_bits0,
+                key_angle_bits1,
+                key_angle_bits2,
+                key_angle_bits3,
+                key_angle_packed0,
+                key_angle_packed1,
+                key_angle_packed2,
+                key_angle_packed3,
+            )
+
+            scores = tl.sum(key_rot * q_rot[None, :], axis=1) * sm_scale
+            scores = tl.where(kv_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + kv_offsets,
+                    mask=kv_mask,
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=0))
+            p = tl.exp(scores - m_new)
+            alpha = tl.exp(m_i - m_new)
+
+            value_rot = _recursive_polar4_load_rotated(
+                value_final_radius,
+                value_angle_q0,
+                value_angle_q1,
+                value_angle_q2,
+                value_angle_q3,
+                value_angle_cos0,
+                value_angle_sin0,
+                value_angle_cos1,
+                value_angle_sin1,
+                value_angle_cos2,
+                value_angle_sin2,
+                value_angle_cos3,
+                value_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                value_angle_bits0,
+                value_angle_bits1,
+                value_angle_bits2,
+                value_angle_bits3,
+                value_angle_packed0,
+                value_angle_packed1,
+                value_angle_packed2,
+                value_angle_packed3,
+            )
+
+            acc_rot = (acc_rot * alpha) + tl.sum(p[:, None] * value_rot, axis=0)
+            l_i = (l_i * alpha) + tl.sum(p, axis=0)
+            m_i = m_new
+
+        acc_rot = acc_rot / tl.maximum(l_i, 1.0e-20)
+        out_vals = tl.sum(acc_rot[:, None] * rot_for_out, axis=0)
+
+        out_base = q_head * head_dim
+        tl.store(out + out_base + dim_offsets, out_vals, mask=dim_mask)
+
+
+    @triton.jit
+    def _recursive_polar4_compressed_attention_block_kernel(
+        query,
+        key_final_radius,
+        key_angle_q0,
+        key_angle_q1,
+        key_angle_q2,
+        key_angle_q3,
+        key_angle_cos0,
+        key_angle_sin0,
+        key_angle_cos1,
+        key_angle_sin1,
+        key_angle_cos2,
+        key_angle_sin2,
+        key_angle_cos3,
+        key_angle_sin3,
+        key_rotation_t,
+        value_final_radius,
+        value_angle_q0,
+        value_angle_q1,
+        value_angle_q2,
+        value_angle_q3,
+        value_angle_cos0,
+        value_angle_sin0,
+        value_angle_cos1,
+        value_angle_sin1,
+        value_angle_cos2,
+        value_angle_sin2,
+        value_angle_cos3,
+        value_angle_sin3,
+        value_rotation_t,
+        attention_mask,
+        out,
+        kv_len,
+        max_length: tl.constexpr,
+        q_len: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        final_dim: tl.constexpr,
+        key_angle_bits0: tl.constexpr,
+        key_angle_bits1: tl.constexpr,
+        key_angle_bits2: tl.constexpr,
+        key_angle_bits3: tl.constexpr,
+        key_angle_packed0: tl.constexpr,
+        key_angle_packed1: tl.constexpr,
+        key_angle_packed2: tl.constexpr,
+        key_angle_packed3: tl.constexpr,
+        value_angle_bits0: tl.constexpr,
+        value_angle_bits1: tl.constexpr,
+        value_angle_bits2: tl.constexpr,
+        value_angle_bits3: tl.constexpr,
+        value_angle_packed0: tl.constexpr,
+        value_angle_packed1: tl.constexpr,
+        value_angle_packed2: tl.constexpr,
+        value_angle_packed3: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        is_causal: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_D: tl.constexpr,
+    ):
+        q_block = tl.program_id(0)
+        q_head = tl.program_id(1)
+        kv_head = q_head // num_key_value_groups
+
+        q_offsets = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        dim_offsets = tl.arange(0, BLOCK_D)
+
+        q_mask = q_offsets < q_len
+        dim_mask = dim_offsets < head_dim
+
+        q_base = (q_head * q_len + q_offsets[:, None]) * head_dim
+        q_vals = tl.load(
+            query + q_base + dim_offsets[None, :],
+            mask=q_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        rot_for_q = tl.load(
+            key_rotation_t + dim_offsets[None, :] * head_dim + dim_offsets[:, None],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_rot = tl.dot(q_vals, rot_for_q, input_precision="ieee")
+
+        rot_for_out = tl.load(
+            value_rotation_t + dim_offsets[:, None] * head_dim + dim_offsets[None, :],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc_rot = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        m_i = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((BLOCK_M,), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, kv_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < kv_len
+            cache_base = kv_head * max_length + kv_offsets
+            kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_rot = _recursive_polar4_load_rotated(
+                key_final_radius,
+                key_angle_q0,
+                key_angle_q1,
+                key_angle_q2,
+                key_angle_q3,
+                key_angle_cos0,
+                key_angle_sin0,
+                key_angle_cos1,
+                key_angle_sin1,
+                key_angle_cos2,
+                key_angle_sin2,
+                key_angle_cos3,
+                key_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                key_angle_bits0,
+                key_angle_bits1,
+                key_angle_bits2,
+                key_angle_bits3,
+                key_angle_packed0,
+                key_angle_packed1,
+                key_angle_packed2,
+                key_angle_packed3,
+            )
+
+            scores = tl.dot(q_rot, tl.trans(key_rot), input_precision="ieee") * sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_rot = _recursive_polar4_load_rotated(
+                value_final_radius,
+                value_angle_q0,
+                value_angle_q1,
+                value_angle_q2,
+                value_angle_q3,
+                value_angle_cos0,
+                value_angle_sin0,
+                value_angle_cos1,
+                value_angle_sin1,
+                value_angle_cos2,
+                value_angle_sin2,
+                value_angle_cos3,
+                value_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                value_angle_bits0,
+                value_angle_bits1,
+                value_angle_bits2,
+                value_angle_bits3,
+                value_angle_packed0,
+                value_angle_packed1,
+                value_angle_packed2,
+                value_angle_packed3,
+            )
+
+            acc_rot = (acc_rot * alpha[:, None]) + tl.dot(p, value_rot, input_precision="ieee")
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        acc_rot = acc_rot / tl.maximum(l_i, 1.0e-20)[:, None]
+        out_vals = tl.dot(acc_rot, rot_for_out, input_precision="ieee")
+
+        out_offsets = (q_head * q_len + q_offsets[:, None]) * head_dim
+        tl.store(
+            out + out_offsets + dim_offsets[None, :],
+            out_vals,
+            mask=q_mask[:, None] & dim_mask[None, :],
+        )
+
+
+    @triton.jit
+    def _recursive_polar4_hot_attention_block_kernel(
+        query,
+        key_final_radius,
+        key_angle_q0,
+        key_angle_q1,
+        key_angle_q2,
+        key_angle_q3,
+        key_angle_cos0,
+        key_angle_sin0,
+        key_angle_cos1,
+        key_angle_sin1,
+        key_angle_cos2,
+        key_angle_sin2,
+        key_angle_cos3,
+        key_angle_sin3,
+        key_rotation_t,
+        value_final_radius,
+        value_angle_q0,
+        value_angle_q1,
+        value_angle_q2,
+        value_angle_q3,
+        value_angle_cos0,
+        value_angle_sin0,
+        value_angle_cos1,
+        value_angle_sin1,
+        value_angle_cos2,
+        value_angle_sin2,
+        value_angle_cos3,
+        value_angle_sin3,
+        value_rotation_t,
+        key_hot,
+        value_hot,
+        attention_mask,
+        out,
+        kv_len,
+        old_len,
+        max_length: tl.constexpr,
+        hot_capacity: tl.constexpr,
+        q_len: tl.constexpr,
+        num_key_value_groups: tl.constexpr,
+        head_dim: tl.constexpr,
+        final_dim: tl.constexpr,
+        key_angle_bits0: tl.constexpr,
+        key_angle_bits1: tl.constexpr,
+        key_angle_bits2: tl.constexpr,
+        key_angle_bits3: tl.constexpr,
+        key_angle_packed0: tl.constexpr,
+        key_angle_packed1: tl.constexpr,
+        key_angle_packed2: tl.constexpr,
+        key_angle_packed3: tl.constexpr,
+        value_angle_bits0: tl.constexpr,
+        value_angle_bits1: tl.constexpr,
+        value_angle_bits2: tl.constexpr,
+        value_angle_bits3: tl.constexpr,
+        value_angle_packed0: tl.constexpr,
+        value_angle_packed1: tl.constexpr,
+        value_angle_packed2: tl.constexpr,
+        value_angle_packed3: tl.constexpr,
+        sm_scale: tl.constexpr,
+        has_mask: tl.constexpr,
+        is_causal: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_D: tl.constexpr,
+    ):
+        q_block = tl.program_id(0)
+        q_head = tl.program_id(1)
+        kv_head = q_head // num_key_value_groups
+
+        q_offsets = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        kv_offsets_base = tl.arange(0, BLOCK_N)
+        dim_offsets = tl.arange(0, BLOCK_D)
+
+        q_mask = q_offsets < q_len
+        dim_mask = dim_offsets < head_dim
+
+        q_base = (q_head * q_len + q_offsets[:, None]) * head_dim
+        q_vals = tl.load(
+            query + q_base + dim_offsets[None, :],
+            mask=q_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        rot_for_q = tl.load(
+            key_rotation_t + dim_offsets[None, :] * head_dim + dim_offsets[:, None],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        q_rot = tl.dot(q_vals, rot_for_q, input_precision="ieee")
+
+        rot_for_out = tl.load(
+            value_rotation_t + dim_offsets[:, None] * head_dim + dim_offsets[None, :],
+            mask=dim_mask[:, None] & dim_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        acc_rot = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        acc_hot = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        m_i = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
+        l_i = tl.full((BLOCK_M,), 0.0, dtype=tl.float32)
+
+        for block_start in tl.range(0, old_len, BLOCK_N):
+            kv_offsets = block_start + kv_offsets_base
+            kv_mask = kv_offsets < old_len
+            cache_base = kv_head * max_length + kv_offsets
+            kv_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_rot = _recursive_polar4_load_rotated(
+                key_final_radius,
+                key_angle_q0,
+                key_angle_q1,
+                key_angle_q2,
+                key_angle_q3,
+                key_angle_cos0,
+                key_angle_sin0,
+                key_angle_cos1,
+                key_angle_sin1,
+                key_angle_cos2,
+                key_angle_sin2,
+                key_angle_cos3,
+                key_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                key_angle_bits0,
+                key_angle_bits1,
+                key_angle_bits2,
+                key_angle_bits3,
+                key_angle_packed0,
+                key_angle_packed1,
+                key_angle_packed2,
+                key_angle_packed3,
+            )
+
+            scores = tl.dot(q_rot, tl.trans(key_rot), input_precision="ieee") * sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_rot = _recursive_polar4_load_rotated(
+                value_final_radius,
+                value_angle_q0,
+                value_angle_q1,
+                value_angle_q2,
+                value_angle_q3,
+                value_angle_cos0,
+                value_angle_sin0,
+                value_angle_cos1,
+                value_angle_sin1,
+                value_angle_cos2,
+                value_angle_sin2,
+                value_angle_cos3,
+                value_angle_sin3,
+                cache_base,
+                dim_offsets,
+                kv_dim_mask,
+                final_dim,
+                value_angle_bits0,
+                value_angle_bits1,
+                value_angle_bits2,
+                value_angle_bits3,
+                value_angle_packed0,
+                value_angle_packed1,
+                value_angle_packed2,
+                value_angle_packed3,
+            )
+
+            acc_rot = (acc_rot * alpha[:, None]) + tl.dot(p, value_rot, input_precision="ieee")
+            acc_hot = acc_hot * alpha[:, None]
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        hot_len = kv_len - old_len
+        for hot_block_start in tl.range(0, hot_len, BLOCK_N):
+            hot_offsets = hot_block_start + kv_offsets_base
+            kv_offsets = old_len + hot_offsets
+            kv_mask = kv_offsets < kv_len
+            hot_slots = kv_offsets - (kv_offsets // hot_capacity) * hot_capacity
+            hot_base = kv_head * hot_capacity + hot_slots
+            hot_dim_base = hot_base[:, None] * head_dim + dim_offsets[None, :]
+            hot_dim_mask = kv_mask[:, None] & dim_mask[None, :]
+
+            key_vals = tl.load(key_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            scores = tl.dot(q_vals, tl.trans(key_vals), input_precision="ieee") * sm_scale
+            scores = tl.where(q_mask[:, None] & kv_mask[None, :], scores, -float("inf"))
+            if is_causal:
+                causal_limit = (kv_len - q_len) + q_offsets
+                causal_mask = kv_offsets[None, :] <= causal_limit[:, None]
+                scores = tl.where(causal_mask, scores, -float("inf"))
+            if has_mask:
+                mask_vals = tl.load(
+                    attention_mask + q_offsets[:, None] * kv_len + kv_offsets[None, :],
+                    mask=q_mask[:, None] & kv_mask[None, :],
+                    other=-float("inf"),
+                ).to(tl.float32)
+                scores += mask_vals
+
+            m_new = tl.maximum(m_i, tl.max(scores, axis=1))
+            p = tl.exp(scores - m_new[:, None])
+            alpha = tl.exp(m_i - m_new)
+
+            value_vals = tl.load(value_hot + hot_dim_base, mask=hot_dim_mask, other=0.0).to(tl.float32)
+            acc_rot = acc_rot * alpha[:, None]
+            acc_hot = (acc_hot * alpha[:, None]) + tl.dot(p, value_vals, input_precision="ieee")
+            l_i = (l_i * alpha) + tl.sum(p, axis=1)
+            m_i = m_new
+
+        inv_l = 1.0 / tl.maximum(l_i, 1.0e-20)
+        old_vals = tl.dot(acc_rot * inv_l[:, None], rot_for_out, input_precision="ieee")
+        hot_vals = acc_hot * inv_l[:, None]
+        out_vals = old_vals + hot_vals
 
         out_offsets = (q_head * q_len + q_offsets[:, None]) * head_dim
         tl.store(
@@ -1663,7 +3049,8 @@ def packed_kv_qjl_node_scores_triton(query_bits, key_bits, kv_len, block_k=1024)
             BLOCK_W=block_w,
             num_warps=4,
         )
-    except Exception:
+    except Exception as exc:
+        _debug_triton_failure("packed_kv_qjl_node_scores_triton", exc)
         return None
     return partial.to(torch.float32).sum(dim=(1, 2))
 
@@ -2188,8 +3575,10 @@ def turbo_vq_append_triton(cache, tensor, start):
     _, num_heads, input_len, head_dim = tensor.shape
     if head_dim != int(getattr(cache, "head_dim", -1)):
         return False
-    if int(getattr(cache, "bits", 0)) != 8:
+    q_idx_bits = int(getattr(cache, "bits", 0))
+    if q_idx_bits < 1 or q_idx_bits > 8:
         return False
+    q_idx_packed_dim = int(getattr(cache, "q_idx_packed_dim", head_dim))
 
     q_idx = getattr(cache, "q_idx", None)
     scale = getattr(cache, "scale", None)
@@ -2201,9 +3590,10 @@ def turbo_vq_append_triton(cache, tensor, start):
         return False
 
     block_d = triton.next_power_of_2(int(head_dim))
+    block_q = triton.next_power_of_2(max(1, q_idx_packed_dim))
     num_boundaries = int(boundaries.numel())
     block_b = triton.next_power_of_2(max(1, num_boundaries))
-    if block_d > 128 or block_b > 256:
+    if block_d > 128 or block_q > 128 or block_b > 256:
         return False
 
     stride_h = int(tensor.stride(1))
@@ -2227,8 +3617,11 @@ def turbo_vq_append_triton(cache, tensor, start):
                 input_len=int(input_len),
                 max_length=int(cache.max_length),
                 head_dim=int(head_dim),
+                q_idx_bits=q_idx_bits,
+                q_idx_packed_dim=q_idx_packed_dim,
                 num_boundaries=num_boundaries,
                 BLOCK_D=block_d,
+                BLOCK_Q=block_q,
                 BLOCK_B=block_b,
                 num_warps=4,
             )
@@ -2268,10 +3661,13 @@ def turbo_vq_append_triton(cache, tensor, start):
             input_len=int(input_len),
             max_length=int(cache.max_length),
             head_dim=int(head_dim),
+            q_idx_bits=q_idx_bits,
+            q_idx_packed_dim=q_idx_packed_dim,
             residual_dim=residual_dim,
             residual_packed_dim=residual_packed_dim,
             num_boundaries=num_boundaries,
             BLOCK_D=block_d,
+            BLOCK_Q=block_q,
             BLOCK_R=block_r,
             BLOCK_P=block_p,
             BLOCK_B=block_b,
@@ -2335,6 +3731,294 @@ def polar_decode_range_triton(
     return True
 
 
+def _compressed_kv_attention_recursive_polar_triton(
+    query_states,
+    key_cache,
+    value_cache,
+    attention_mask,
+    num_key_value_groups,
+    sm_scale,
+):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(query_states):
+        return None
+    if not (
+        getattr(key_cache, "is_recursive_polar", False)
+        and getattr(value_cache, "is_recursive_polar", False)
+    ):
+        return None
+    if query_states.dim() != 4 or query_states.shape[0] != 1:
+        return None
+    if getattr(key_cache, "dequant_data", None) is not None:
+        return None
+    if getattr(value_cache, "dequant_data", None) is not None:
+        return None
+
+    _, num_heads, q_len, head_dim = query_states.shape
+    kv_len = int(key_cache.current_length.item())
+    if kv_len <= 0:
+        return None
+    if int(key_cache.polar_levels) != 4 or int(value_cache.polar_levels) != 4:
+        return None
+    if head_dim != int(key_cache.head_dim) or head_dim != int(value_cache.head_dim):
+        return None
+    if int(key_cache.num_heads) != int(value_cache.num_heads):
+        return None
+    if int(key_cache.num_heads) * int(num_key_value_groups) != int(num_heads):
+        return None
+    final_dim = int(getattr(key_cache, "final_dim", 0))
+    if final_dim <= 0 or final_dim != int(getattr(value_cache, "final_dim", 0)):
+        return None
+    if final_dim != int(head_dim) // 16:
+        return None
+    key_hot = getattr(key_cache, "hot_data", None)
+    value_hot = getattr(value_cache, "hot_data", None)
+    has_hot = key_hot is not None or value_hot is not None
+    if has_hot:
+        if not (_is_cuda_tensor(key_hot) and _is_cuda_tensor(value_hot)):
+            return None
+        if int(getattr(key_cache, "hot_capacity", 0)) <= 0:
+            return None
+        if int(getattr(key_cache, "hot_capacity", 0)) != int(getattr(value_cache, "hot_capacity", 0)):
+            return None
+    elif int(q_len) != 1:
+        # Non-hot recursive Polar block support exists below, but the paper
+        # benchmark path keeps streamed verifier KV exact. Leave the no-hot
+        # verifier path on dense SDPA unless explicitly needed later.
+        return None
+
+    key_angles = getattr(key_cache, "angle_q", None)
+    value_angles = getattr(value_cache, "angle_q", None)
+    key_cos = getattr(key_cache, "angle_cos_luts", None)
+    key_sin = getattr(key_cache, "angle_sin_luts", None)
+    value_cos = getattr(value_cache, "angle_cos_luts", None)
+    value_sin = getattr(value_cache, "angle_sin_luts", None)
+    if not all(isinstance(items, (list, tuple)) and len(items) >= 4 for items in (key_angles, value_angles, key_cos, key_sin, value_cos, value_sin)):
+        return None
+
+    key_level_bits = [int(bit) for bit in getattr(key_cache, "level_bits", [])[:4]]
+    value_level_bits = [int(bit) for bit in getattr(value_cache, "level_bits", [])[:4]]
+    key_packed_dims = [int(dim) for dim in getattr(key_cache, "level_packed_dims", [])[:4]]
+    value_packed_dims = [int(dim) for dim in getattr(value_cache, "level_packed_dims", [])[:4]]
+    if not (
+        len(key_level_bits) == len(value_level_bits) == 4
+        and len(key_packed_dims) == len(value_packed_dims) == 4
+    ):
+        return None
+    if any(bit < 1 or bit > 8 for bit in key_level_bits + value_level_bits):
+        return None
+    if any(dim <= 0 for dim in key_packed_dims + value_packed_dims):
+        return None
+
+    tensors = (
+        getattr(key_cache, "final_radius", None),
+        getattr(value_cache, "final_radius", None),
+        getattr(key_cache, "rotation_t", None),
+        getattr(value_cache, "rotation_t", None),
+        key_angles[0],
+        key_angles[1],
+        key_angles[2],
+        key_angles[3],
+        value_angles[0],
+        value_angles[1],
+        value_angles[2],
+        value_angles[3],
+        key_cos[0],
+        key_sin[0],
+        key_cos[1],
+        key_sin[1],
+        key_cos[2],
+        key_sin[2],
+        key_cos[3],
+        key_sin[3],
+        value_cos[0],
+        value_sin[0],
+        value_cos[1],
+        value_sin[1],
+        value_cos[2],
+        value_sin[2],
+        value_cos[3],
+        value_sin[3],
+    )
+    if not all(_is_cuda_tensor(tensor) for tensor in tensors):
+        return None
+    if key_cache.final_radius.shape[:3] != value_cache.final_radius.shape[:3]:
+        return None
+    if int(key_cache.final_radius.shape[-1]) != final_dim:
+        return None
+    if int(value_cache.final_radius.shape[-1]) != final_dim:
+        return None
+    for idx, packed_dim in enumerate(key_packed_dims):
+        if int(key_angles[idx].shape[-1]) != packed_dim:
+            return None
+    for idx, packed_dim in enumerate(value_packed_dims):
+        if int(value_angles[idx].shape[-1]) != packed_dim:
+            return None
+
+    if attention_mask is not None:
+        if not _is_cuda_tensor(attention_mask) or attention_mask.shape != (1, 1, q_len, kv_len):
+            return None
+        attention_mask = attention_mask.contiguous()
+
+    block_d = triton.next_power_of_2(int(head_dim))
+    if block_d > 128:
+        return None
+    block_n = 32 if block_d >= 128 else 64
+
+    query_states = query_states.contiguous()
+    out = torch.empty_like(query_states)
+    dummy_mask = query_states
+    mask_ptr = attention_mask if attention_mask is not None else dummy_mask
+
+    try:
+        if has_hot:
+            try:
+                max_block_q = int(os.environ.get("MEDUSA_POLAR_HOT_BLOCK_MAX_Q", "8"))
+            except ValueError:
+                max_block_q = 8
+            force_block = os.environ.get("MEDUSA_POLAR_HOT_BLOCK_FORCE", "").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if int(q_len) > max_block_q and not force_block:
+                return None
+            block_m = 16
+            hot_block_n = 16
+            old_len = max(0, kv_len - int(key_cache.hot_capacity))
+            _recursive_polar4_hot_attention_block_kernel[
+                (triton.cdiv(int(q_len), block_m), int(num_heads))
+            ](
+                query_states,
+                key_cache.final_radius.contiguous(),
+                key_angles[0].contiguous(),
+                key_angles[1].contiguous(),
+                key_angles[2].contiguous(),
+                key_angles[3].contiguous(),
+                key_cos[0].contiguous(),
+                key_sin[0].contiguous(),
+                key_cos[1].contiguous(),
+                key_sin[1].contiguous(),
+                key_cos[2].contiguous(),
+                key_sin[2].contiguous(),
+                key_cos[3].contiguous(),
+                key_sin[3].contiguous(),
+                key_cache.rotation_t.contiguous(),
+                value_cache.final_radius.contiguous(),
+                value_angles[0].contiguous(),
+                value_angles[1].contiguous(),
+                value_angles[2].contiguous(),
+                value_angles[3].contiguous(),
+                value_cos[0].contiguous(),
+                value_sin[0].contiguous(),
+                value_cos[1].contiguous(),
+                value_sin[1].contiguous(),
+                value_cos[2].contiguous(),
+                value_sin[2].contiguous(),
+                value_cos[3].contiguous(),
+                value_sin[3].contiguous(),
+                value_cache.rotation_t.contiguous(),
+                key_hot.contiguous(),
+                value_hot.contiguous(),
+                mask_ptr,
+                out,
+                kv_len,
+                old_len,
+                max_length=int(key_cache.max_length),
+                hot_capacity=int(key_cache.hot_capacity),
+                q_len=int(q_len),
+                num_key_value_groups=int(num_key_value_groups),
+                head_dim=int(head_dim),
+                final_dim=final_dim,
+                key_angle_bits0=key_level_bits[0],
+                key_angle_bits1=key_level_bits[1],
+                key_angle_bits2=key_level_bits[2],
+                key_angle_bits3=key_level_bits[3],
+                key_angle_packed0=key_packed_dims[0],
+                key_angle_packed1=key_packed_dims[1],
+                key_angle_packed2=key_packed_dims[2],
+                key_angle_packed3=key_packed_dims[3],
+                value_angle_bits0=value_level_bits[0],
+                value_angle_bits1=value_level_bits[1],
+                value_angle_bits2=value_level_bits[2],
+                value_angle_bits3=value_level_bits[3],
+                value_angle_packed0=value_packed_dims[0],
+                value_angle_packed1=value_packed_dims[1],
+                value_angle_packed2=value_packed_dims[2],
+                value_angle_packed3=value_packed_dims[3],
+                sm_scale=float(sm_scale),
+                has_mask=attention_mask is not None,
+                is_causal=attention_mask is None and int(q_len) > 1,
+                BLOCK_M=block_m,
+                BLOCK_N=hot_block_n,
+                BLOCK_D=block_d,
+                num_warps=4,
+            )
+        else:
+            _recursive_polar4_compressed_attention_decode_kernel[(int(num_heads),)](
+                query_states,
+                key_cache.final_radius.contiguous(),
+                key_angles[0].contiguous(),
+                key_angles[1].contiguous(),
+                key_angles[2].contiguous(),
+                key_angles[3].contiguous(),
+                key_cos[0].contiguous(),
+                key_sin[0].contiguous(),
+                key_cos[1].contiguous(),
+                key_sin[1].contiguous(),
+                key_cos[2].contiguous(),
+                key_sin[2].contiguous(),
+                key_cos[3].contiguous(),
+                key_sin[3].contiguous(),
+                key_cache.rotation_t.contiguous(),
+                value_cache.final_radius.contiguous(),
+                value_angles[0].contiguous(),
+                value_angles[1].contiguous(),
+                value_angles[2].contiguous(),
+                value_angles[3].contiguous(),
+                value_cos[0].contiguous(),
+                value_sin[0].contiguous(),
+                value_cos[1].contiguous(),
+                value_sin[1].contiguous(),
+                value_cos[2].contiguous(),
+                value_sin[2].contiguous(),
+                value_cos[3].contiguous(),
+                value_sin[3].contiguous(),
+                value_cache.rotation_t.contiguous(),
+                mask_ptr,
+                out,
+                kv_len,
+                max_length=int(key_cache.max_length),
+                num_key_value_groups=int(num_key_value_groups),
+                head_dim=int(head_dim),
+                final_dim=final_dim,
+                key_angle_bits0=key_level_bits[0],
+                key_angle_bits1=key_level_bits[1],
+                key_angle_bits2=key_level_bits[2],
+                key_angle_bits3=key_level_bits[3],
+                key_angle_packed0=key_packed_dims[0],
+                key_angle_packed1=key_packed_dims[1],
+                key_angle_packed2=key_packed_dims[2],
+                key_angle_packed3=key_packed_dims[3],
+                value_angle_bits0=value_level_bits[0],
+                value_angle_bits1=value_level_bits[1],
+                value_angle_bits2=value_level_bits[2],
+                value_angle_bits3=value_level_bits[3],
+                value_angle_packed0=value_packed_dims[0],
+                value_angle_packed1=value_packed_dims[1],
+                value_angle_packed2=value_packed_dims[2],
+                value_angle_packed3=value_packed_dims[3],
+                sm_scale=float(sm_scale),
+                has_mask=attention_mask is not None,
+                BLOCK_N=block_n,
+                BLOCK_D=block_d,
+                num_warps=4,
+            )
+    except Exception as exc:
+        _debug_triton_failure("recursive_polar_attention_triton", exc)
+        return None
+    return out
+
+
 def compressed_kv_attention_polar_triton(
     query_states,
     key_cache,
@@ -2351,6 +4035,15 @@ def compressed_kv_attention_polar_triton(
         return None
     if getattr(value_cache, "dequant_data", None) is not None:
         return None
+    if getattr(key_cache, "is_recursive_polar", False) or getattr(value_cache, "is_recursive_polar", False):
+        return _compressed_kv_attention_recursive_polar_triton(
+            query_states,
+            key_cache,
+            value_cache,
+            attention_mask,
+            num_key_value_groups,
+            sm_scale,
+        )
 
     key_tensors = (
         getattr(key_cache, "radius_q", None),
@@ -2501,6 +4194,16 @@ def compressed_kv_attention_turbo_vq_triton(
         return None
     if int(key_cache.num_heads) * int(num_key_value_groups) != int(num_heads):
         return None
+    key_q_idx_bits = int(getattr(key_cache, "bits", 8))
+    value_q_idx_bits = int(getattr(value_cache, "bits", 8))
+    key_q_idx_packed_dim = int(getattr(key_cache, "q_idx_packed_dim", head_dim))
+    value_q_idx_packed_dim = int(getattr(value_cache, "q_idx_packed_dim", head_dim))
+    if key_q_idx_bits < 1 or key_q_idx_bits > 8 or value_q_idx_bits < 1 or value_q_idx_bits > 8:
+        return None
+    if int(key_cache.q_idx.shape[-1]) != key_q_idx_packed_dim:
+        return None
+    if int(value_cache.q_idx.shape[-1]) != value_q_idx_packed_dim:
+        return None
 
     residual_dim = int(getattr(key_cache, "residual_dim", 0))
     residual_packed_dim = int(getattr(key_cache, "residual_packed_dim", 0))
@@ -2560,6 +4263,10 @@ def compressed_kv_attention_turbo_vq_triton(
                 max_length=int(key_cache.max_length),
                 num_key_value_groups=int(num_key_value_groups),
                 head_dim=int(head_dim),
+                key_q_idx_bits=key_q_idx_bits,
+                key_q_idx_packed_dim=key_q_idx_packed_dim,
+                value_q_idx_bits=value_q_idx_bits,
+                value_q_idx_packed_dim=value_q_idx_packed_dim,
                 residual_dim=residual_dim,
                 residual_packed_dim=residual_packed_dim,
                 residual_coeff=float(key_cache.residual_coeff),
@@ -2600,18 +4307,241 @@ def compressed_kv_attention_turbo_vq_triton(
                 q_len=int(q_len),
                 num_key_value_groups=int(num_key_value_groups),
                 head_dim=int(head_dim),
+                key_q_idx_bits=key_q_idx_bits,
+                key_q_idx_packed_dim=key_q_idx_packed_dim,
+                value_q_idx_bits=value_q_idx_bits,
+                value_q_idx_packed_dim=value_q_idx_packed_dim,
                 residual_dim=residual_dim,
                 residual_packed_dim=residual_packed_dim,
                 residual_coeff=float(key_cache.residual_coeff),
                 sm_scale=float(sm_scale),
                 has_mask=attention_mask is not None,
+                is_causal=attention_mask is None and int(q_len) > 1,
                 BLOCK_M=block_m,
                 BLOCK_N=block_n,
                 BLOCK_D=block_d,
                 BLOCK_R=block_r,
                 num_warps=4,
             )
-    except Exception:
+    except Exception as exc:
+        _debug_triton_failure("compressed_kv_attention_turbo_vq_triton", exc)
+        return None
+    return out
+
+
+def _hybrid_outlier_kv_attention_turbo_vq_triton(
+    query_states,
+    key_cache,
+    value_cache,
+    attention_mask,
+    num_key_value_groups,
+    sm_scale,
+):
+    if not TRITON_AVAILABLE or not _is_cuda_tensor(query_states):
+        return None
+    if not (
+        getattr(key_cache, "is_hybrid_outlier_turbo_vq", False)
+        and getattr(value_cache, "is_hybrid_outlier_turbo_vq", False)
+    ):
+        return None
+    if query_states.dim() != 4 or query_states.shape[0] != 1:
+        return None
+
+    _, num_heads, q_len, head_dim = query_states.shape
+    if int(q_len) > 1:
+        try:
+            max_block_q = int(os.environ.get("MEDUSA_TURBO_OUTLIER_BLOCK_MAX_Q", "128"))
+        except ValueError:
+            max_block_q = 128
+        force_block = os.environ.get("MEDUSA_TURBO_OUTLIER_BLOCK_FORCE", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if int(q_len) > max_block_q and not force_block:
+            return None
+
+    key_comp = getattr(key_cache, "compressed_cache", None)
+    value_comp = getattr(value_cache, "compressed_cache", None)
+    if key_comp is None or value_comp is None:
+        return None
+    key_regular = getattr(key_comp, "regular_cache", None)
+    key_outlier = getattr(key_comp, "outlier_cache", None)
+    value_regular = getattr(value_comp, "regular_cache", None)
+    value_outlier = getattr(value_comp, "outlier_cache", None)
+    if any(cache is None for cache in (key_regular, key_outlier, value_regular, value_outlier)):
+        return None
+
+    kv_len = int(key_cache.current_length.item())
+    if kv_len <= 0:
+        return None
+    hot_capacity = int(getattr(key_cache, "hot_capacity", 0))
+    if hot_capacity <= 0 or hot_capacity != int(getattr(value_cache, "hot_capacity", 0)):
+        return None
+    old_len = max(0, kv_len - hot_capacity)
+    if int(key_cache.num_heads) != int(value_cache.num_heads):
+        return None
+    if int(key_cache.num_heads) * int(num_key_value_groups) != int(num_heads):
+        return None
+    if int(key_cache.head_dim) != int(head_dim) or int(value_cache.head_dim) != int(head_dim):
+        return None
+
+    regular_dim = int(getattr(key_comp, "n_regular", 0))
+    outlier_dim = int(getattr(key_comp, "n_outlier", 0))
+    if regular_dim <= 0 or outlier_dim <= 0:
+        return None
+    if regular_dim != int(getattr(value_comp, "n_regular", -1)):
+        return None
+    if outlier_dim != int(getattr(value_comp, "n_outlier", -1)):
+        return None
+    if regular_dim != int(getattr(key_regular, "head_dim", -1)):
+        return None
+    if outlier_dim != int(getattr(key_outlier, "head_dim", -1)):
+        return None
+
+    key_regular_bits = int(getattr(key_regular, "bits", 0))
+    key_outlier_bits = int(getattr(key_outlier, "bits", 0))
+    value_regular_bits = int(getattr(value_regular, "bits", 0))
+    value_outlier_bits = int(getattr(value_outlier, "bits", 0))
+    if any(bits < 1 or bits > 8 for bits in (key_regular_bits, key_outlier_bits, value_regular_bits, value_outlier_bits)):
+        return None
+
+    regular_residual_dim = int(getattr(key_regular, "residual_dim", 0))
+    outlier_residual_dim = int(getattr(key_outlier, "residual_dim", 0))
+    regular_residual_packed_dim = int(getattr(key_regular, "residual_packed_dim", 0))
+    outlier_residual_packed_dim = int(getattr(key_outlier, "residual_packed_dim", 0))
+    if (
+        regular_residual_dim <= 0
+        or outlier_residual_dim <= 0
+        or regular_residual_packed_dim <= 0
+        or outlier_residual_packed_dim <= 0
+    ):
+        return None
+
+    if attention_mask is not None:
+        if not _is_cuda_tensor(attention_mask) or attention_mask.shape != (1, 1, q_len, kv_len):
+            return None
+        attention_mask = attention_mask.contiguous()
+
+    tensors = (
+        getattr(key_comp, "regular_idx", None),
+        getattr(key_comp, "outlier_idx", None),
+        getattr(key_cache, "hot_data", None),
+        getattr(value_cache, "hot_data", None),
+        key_regular.q_idx,
+        key_regular.scale,
+        key_regular.codebook,
+        key_regular.rotation_t,
+        key_regular.residual_sign_packed,
+        key_regular.residual_norm,
+        key_regular.residual_proj,
+        key_outlier.q_idx,
+        key_outlier.scale,
+        key_outlier.codebook,
+        key_outlier.rotation_t,
+        key_outlier.residual_sign_packed,
+        key_outlier.residual_norm,
+        key_outlier.residual_proj,
+        value_regular.q_idx,
+        value_regular.scale,
+        value_regular.codebook,
+        value_regular.rotation_t,
+        value_outlier.q_idx,
+        value_outlier.scale,
+        value_outlier.codebook,
+        value_outlier.rotation_t,
+    )
+    if not all(_is_cuda_tensor(tensor) for tensor in tensors):
+        return None
+
+    block_reg = max(16, triton.next_power_of_2(regular_dim))
+    block_out = max(16, triton.next_power_of_2(outlier_dim))
+    block_rreg = max(16, triton.next_power_of_2(regular_residual_dim))
+    block_rout = max(16, triton.next_power_of_2(outlier_residual_dim))
+    if block_reg > 128 or block_out > 64 or block_rreg > 128 or block_rout > 64:
+        return None
+
+    query_stride_h = int(query_states.stride(1))
+    query_stride_q = int(query_states.stride(2))
+    query_stride_d = int(query_states.stride(3))
+    out = torch.empty_like(query_states)
+    dummy_mask = query_states
+    mask_ptr = attention_mask if attention_mask is not None else dummy_mask
+    block_m = 16
+    block_n = 32
+
+    try:
+        _turbo_vq_hybrid_outlier_attention_block_kernel[
+            (triton.cdiv(int(q_len), block_m), int(num_heads))
+        ](
+            query_states,
+            key_comp.regular_idx.contiguous(),
+            key_comp.outlier_idx.contiguous(),
+            key_regular.q_idx.contiguous(),
+            key_regular.scale.contiguous(),
+            key_regular.codebook.contiguous(),
+            key_regular.rotation_t.contiguous(),
+            key_regular.residual_sign_packed.contiguous(),
+            key_regular.residual_norm.contiguous(),
+            key_regular.residual_proj.contiguous(),
+            key_outlier.q_idx.contiguous(),
+            key_outlier.scale.contiguous(),
+            key_outlier.codebook.contiguous(),
+            key_outlier.rotation_t.contiguous(),
+            key_outlier.residual_sign_packed.contiguous(),
+            key_outlier.residual_norm.contiguous(),
+            key_outlier.residual_proj.contiguous(),
+            value_regular.q_idx.contiguous(),
+            value_regular.scale.contiguous(),
+            value_regular.codebook.contiguous(),
+            value_regular.rotation_t.contiguous(),
+            value_outlier.q_idx.contiguous(),
+            value_outlier.scale.contiguous(),
+            value_outlier.codebook.contiguous(),
+            value_outlier.rotation_t.contiguous(),
+            key_cache.hot_data.contiguous(),
+            value_cache.hot_data.contiguous(),
+            mask_ptr,
+            out,
+            kv_len,
+            old_len,
+            query_stride_h,
+            query_stride_q,
+            query_stride_d,
+            max_length=int(key_cache.max_length),
+            hot_capacity=hot_capacity,
+            q_len=int(q_len),
+            num_key_value_groups=int(num_key_value_groups),
+            head_dim=int(head_dim),
+            regular_dim=regular_dim,
+            outlier_dim=outlier_dim,
+            key_regular_q_idx_bits=key_regular_bits,
+            key_regular_q_idx_packed_dim=int(key_regular.q_idx_packed_dim),
+            key_outlier_q_idx_bits=key_outlier_bits,
+            key_outlier_q_idx_packed_dim=int(key_outlier.q_idx_packed_dim),
+            value_regular_q_idx_bits=value_regular_bits,
+            value_regular_q_idx_packed_dim=int(value_regular.q_idx_packed_dim),
+            value_outlier_q_idx_bits=value_outlier_bits,
+            value_outlier_q_idx_packed_dim=int(value_outlier.q_idx_packed_dim),
+            regular_residual_dim=regular_residual_dim,
+            regular_residual_packed_dim=regular_residual_packed_dim,
+            regular_residual_coeff=float(key_regular.residual_coeff),
+            outlier_residual_dim=outlier_residual_dim,
+            outlier_residual_packed_dim=outlier_residual_packed_dim,
+            outlier_residual_coeff=float(key_outlier.residual_coeff),
+            sm_scale=float(sm_scale),
+            has_mask=attention_mask is not None,
+            is_causal=attention_mask is None and int(q_len) > 1,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            BLOCK_REG=block_reg,
+            BLOCK_OUT=block_out,
+            BLOCK_RREG=block_rreg,
+            BLOCK_ROUT=block_rout,
+            num_warps=4,
+        )
+    except Exception as exc:
+        _debug_triton_failure("hybrid_outlier_kv_attention_turbo_vq_triton", exc)
         return None
     return out
 
@@ -2626,6 +4556,15 @@ def hybrid_kv_attention_turbo_vq_triton(
 ):
     if not TRITON_AVAILABLE or not _is_cuda_tensor(query_states):
         return None
+    if getattr(key_cache, "is_hybrid_outlier_turbo_vq", False) or getattr(value_cache, "is_hybrid_outlier_turbo_vq", False):
+        return _hybrid_outlier_kv_attention_turbo_vq_triton(
+            query_states,
+            key_cache,
+            value_cache,
+            attention_mask,
+            num_key_value_groups,
+            sm_scale,
+        )
     if not (
         getattr(key_cache, "is_hybrid_turbo_vq", False)
         and getattr(value_cache, "is_hybrid_turbo_vq", False)
@@ -2635,12 +4574,22 @@ def hybrid_kv_attention_turbo_vq_triton(
         return None
 
     _, num_heads, q_len, head_dim = query_states.shape
-    if int(q_len) != 1:
-        return None
+    if int(q_len) > 1:
+        try:
+            max_block_q = int(os.environ.get("MEDUSA_TURBO_HYBRID_BLOCK_MAX_Q", "8"))
+        except ValueError:
+            max_block_q = 8
+        force_block = os.environ.get("MEDUSA_TURBO_HYBRID_BLOCK_FORCE", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if int(q_len) > max_block_q and not force_block:
+            return None
 
     kv_len = int(key_cache.current_length.item())
     old_len = int(key_cache.old_length(kv_len))
-    if kv_len <= 0 or old_len <= 0:
+    if kv_len <= 0 or old_len < 0:
         return None
     if int(key_cache.hot_capacity) != int(value_cache.hot_capacity):
         return None
@@ -2649,6 +4598,16 @@ def hybrid_kv_attention_turbo_vq_triton(
     if int(key_cache.num_heads) != int(value_cache.num_heads):
         return None
     if int(key_cache.num_heads) * int(num_key_value_groups) != int(num_heads):
+        return None
+    key_q_idx_bits = int(getattr(key_cache, "bits", 8))
+    value_q_idx_bits = int(getattr(value_cache, "bits", 8))
+    key_q_idx_packed_dim = int(getattr(key_cache, "q_idx_packed_dim", head_dim))
+    value_q_idx_packed_dim = int(getattr(value_cache, "q_idx_packed_dim", head_dim))
+    if key_q_idx_bits < 1 or key_q_idx_bits > 8 or value_q_idx_bits < 1 or value_q_idx_bits > 8:
+        return None
+    if int(key_cache.q_idx.shape[-1]) != key_q_idx_packed_dim:
+        return None
+    if int(value_cache.q_idx.shape[-1]) != value_q_idx_packed_dim:
         return None
 
     key_tensors = (
@@ -2676,7 +4635,7 @@ def hybrid_kv_attention_turbo_vq_triton(
     if residual_dim <= 0 or residual_packed_dim <= 0:
         return None
     if attention_mask is not None:
-        if not _is_cuda_tensor(attention_mask) or attention_mask.shape != (1, 1, 1, kv_len):
+        if not _is_cuda_tensor(attention_mask) or attention_mask.shape != (1, 1, q_len, kv_len):
             return None
         attention_mask = attention_mask.contiguous()
 
@@ -2702,42 +4661,95 @@ def hybrid_kv_attention_turbo_vq_triton(
     block_n = 16 if block_d >= 128 else (32 if block_r > 128 else 64)
 
     try:
-        _turbo_vq_hybrid_attention_decode_kernel[(int(num_heads),)](
-            query_states,
-            key_cache.q_idx.contiguous(),
-            key_cache.scale.contiguous(),
-            key_cache.codebook.contiguous(),
-            key_cache.rotation_t.contiguous(),
-            key_cache.residual_sign_packed.contiguous(),
-            key_cache.residual_norm.contiguous(),
-            key_cache.residual_proj.contiguous(),
-            value_cache.q_idx.contiguous(),
-            value_cache.scale.contiguous(),
-            value_cache.codebook.contiguous(),
-            value_cache.rotation_t.contiguous(),
-            key_cache.hot_data.contiguous(),
-            value_cache.hot_data.contiguous(),
-            mask_ptr,
-            out,
-            kv_len,
-            old_len,
-            query_stride_h,
-            query_stride_q,
-            query_stride_d,
-            max_length=int(key_cache.max_length),
-            hot_capacity=int(key_cache.hot_capacity),
-            num_key_value_groups=int(num_key_value_groups),
-            head_dim=int(head_dim),
-            residual_dim=residual_dim,
-            residual_packed_dim=residual_packed_dim,
-            residual_coeff=float(key_cache.residual_coeff),
-            sm_scale=float(sm_scale),
-            has_mask=attention_mask is not None,
-            BLOCK_N=block_n,
-            BLOCK_D=block_d,
-            BLOCK_R=block_r,
-            num_warps=4,
-        )
-    except Exception:
+        if int(q_len) == 1:
+            _turbo_vq_hybrid_attention_decode_kernel[(int(num_heads),)](
+                query_states,
+                key_cache.q_idx.contiguous(),
+                key_cache.scale.contiguous(),
+                key_cache.codebook.contiguous(),
+                key_cache.rotation_t.contiguous(),
+                key_cache.residual_sign_packed.contiguous(),
+                key_cache.residual_norm.contiguous(),
+                key_cache.residual_proj.contiguous(),
+                value_cache.q_idx.contiguous(),
+                value_cache.scale.contiguous(),
+                value_cache.codebook.contiguous(),
+                value_cache.rotation_t.contiguous(),
+                key_cache.hot_data.contiguous(),
+                value_cache.hot_data.contiguous(),
+                mask_ptr,
+                out,
+                kv_len,
+                old_len,
+                query_stride_h,
+                query_stride_q,
+                query_stride_d,
+                max_length=int(key_cache.max_length),
+                hot_capacity=int(key_cache.hot_capacity),
+                num_key_value_groups=int(num_key_value_groups),
+                head_dim=int(head_dim),
+                key_q_idx_bits=key_q_idx_bits,
+                key_q_idx_packed_dim=key_q_idx_packed_dim,
+                value_q_idx_bits=value_q_idx_bits,
+                value_q_idx_packed_dim=value_q_idx_packed_dim,
+                residual_dim=residual_dim,
+                residual_packed_dim=residual_packed_dim,
+                residual_coeff=float(key_cache.residual_coeff),
+                sm_scale=float(sm_scale),
+                has_mask=attention_mask is not None,
+                BLOCK_N=block_n,
+                BLOCK_D=block_d,
+                BLOCK_R=block_r,
+                num_warps=4,
+            )
+        else:
+            block_m = 16
+            _turbo_vq_hybrid_attention_block_kernel[
+                (triton.cdiv(int(q_len), block_m), int(num_heads))
+            ](
+                query_states,
+                key_cache.q_idx.contiguous(),
+                key_cache.scale.contiguous(),
+                key_cache.codebook.contiguous(),
+                key_cache.rotation_t.contiguous(),
+                key_cache.residual_sign_packed.contiguous(),
+                key_cache.residual_norm.contiguous(),
+                key_cache.residual_proj.contiguous(),
+                value_cache.q_idx.contiguous(),
+                value_cache.scale.contiguous(),
+                value_cache.codebook.contiguous(),
+                value_cache.rotation_t.contiguous(),
+                key_cache.hot_data.contiguous(),
+                value_cache.hot_data.contiguous(),
+                mask_ptr,
+                out,
+                kv_len,
+                old_len,
+                query_stride_h,
+                query_stride_q,
+                query_stride_d,
+                max_length=int(key_cache.max_length),
+                hot_capacity=int(key_cache.hot_capacity),
+                q_len=int(q_len),
+                num_key_value_groups=int(num_key_value_groups),
+                head_dim=int(head_dim),
+                key_q_idx_bits=key_q_idx_bits,
+                key_q_idx_packed_dim=key_q_idx_packed_dim,
+                value_q_idx_bits=value_q_idx_bits,
+                value_q_idx_packed_dim=value_q_idx_packed_dim,
+                residual_dim=residual_dim,
+                residual_packed_dim=residual_packed_dim,
+                residual_coeff=float(key_cache.residual_coeff),
+                sm_scale=float(sm_scale),
+                has_mask=attention_mask is not None,
+                is_causal=attention_mask is None and int(q_len) > 1,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                BLOCK_D=block_d,
+                BLOCK_R=block_r,
+                num_warps=4,
+            )
+    except Exception as exc:
+        _debug_triton_failure("hybrid_kv_attention_turbo_vq_triton", exc)
         return None
     return out

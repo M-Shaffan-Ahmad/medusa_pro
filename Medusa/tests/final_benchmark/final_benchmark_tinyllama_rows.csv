@@ -1,0 +1,110 @@
+model,model_dir,prompt_type,requested_context_tokens,category,mode,tokens,prompt_tokens,tokens_per_step_cap,accepted_tokens_per_step,verified_nodes_per_step,total_s,ttft_s,tps,speedup_vs_base,prefix_match_vs_base,peak_alloc_mb,peak_reserved_mb,model_context_window,context_utilization,fp16_kv_mb_est,turbo_vq_kv_mb_est,polar_kv_mb_est,stat_adaptive_tree_balanced_choice_count,stat_adaptive_tree_balanced_steps,stat_adaptive_tree_primary_choice_count,stat_adaptive_tree_steps,stat_candidate_paths_considered,stat_decode_steps,stat_draft_head_type,stat_fallback_full_tree_steps,stat_full_tree_steps,stat_fused_lm_head_argmax_steps,stat_generated_tokens,stat_kv_cache_max_length,stat_kv_cache_required_len,stat_kv_cache_use_model_context,stat_medusa_choice_count,stat_medusa_choice_max_depth,stat_model_context_window,stat_packed_kv_qjl_auto_disable_events,stat_packed_kv_qjl_enabled,stat_packed_kv_qjl_fallback_steps,stat_packed_kv_qjl_gated_steps,stat_packed_kv_qjl_min_len,stat_packed_kv_qjl_steps,stat_planner_bypass_steps,stat_planner_full_tree_decisions,stat_planner_steps,stat_pruned_tree_steps,stat_selected_candidate_paths,stat_skip_gating_steps,stat_tree_policy,stat_turbo_auto_steps,stat_verified_tree_nodes,ideal_turbo_vq_kv_mb_est,ideal_turbo_vq_transfer_reduction,polar_algorithmic_bits_per_channel,polar_angle_bytes_per_token_head,polar_radius_bytes_per_token_head,polar_transfer_reduction,turbo_vq_actual_bits_per_channel_est,turbo_vq_compressed_kv_mb_est,turbo_vq_key_algorithmic_bits,turbo_vq_key_qidx_bytes_per_token_head,turbo_vq_transfer_reduction,turbo_vq_value_bits,turbo_vq_value_qidx_bytes_per_token_head,text
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,0,technical_ctx0,medusa_base,64,29,1.3333333333333333,2.064516129032258,64.0,0.6596430040000314,0.6596207580000168,97.02217655899972,1.0,1.0,2703.2861328125,2814.0,2048,0.04541015625,1.998046875,1.1707305908203125,0.4839019775390625,0,0,63,0,1302,31,medusa,0,31,31,64,2048,277,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1302,0,fixed,0,1984,1.1707305908203125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.1707305908203125,9.0,64,1.7066666666666668,8,64,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node."
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,0,technical_ctx0,turbo_fast_24,64,29,1.3333333333333333,1.8823529411764706,25.0,0.5477436479999938,0.5477217949999726,116.8429798021149,1.2042914717653448,1.0,2701.3916015625,2810.0,2048,0.04541015625,1.998046875,1.1707305908203125,0.4839019775390625,0,0,24,0,646,34,medusa,0,34,34,64,2048,229,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,646,0,fixed,0,850,1.1707305908203125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.1707305908203125,9.0,64,1.7066666666666668,8,64,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node."
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,0,general_ctx0,medusa_base,64,34,1.3333333333333333,2.4615384615384617,64.0,0.5435774750000064,0.5435550119999562,117.7385063647077,1.0,1.0,2703.28662109375,2814.0,2048,0.0478515625,2.10546875,1.233673095703125,0.509918212890625,0,0,63,0,1092,26,medusa,0,26,26,64,2048,282,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1092,0,fixed,0,1664,1.233673095703125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.233673095703125,9.0,64,1.7066666666666668,8,64,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems overwhelming, break it down into smaller, more manageable steps. This will help you"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,0,general_ctx0,turbo_fast_24,64,34,1.3333333333333333,2.4615384615384617,25.0,0.42335411400000567,0.42332896499999606,151.173681519956,1.283978251360513,1.0,2701.4228515625,2810.0,2048,0.0478515625,2.10546875,1.233673095703125,0.509918212890625,0,0,24,0,494,26,medusa,0,26,26,64,2048,234,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,494,0,fixed,0,650,1.233673095703125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.233673095703125,9.0,64,1.7066666666666668,8,64,"1. Set a deadline: Give yourself a specific deadline for completing the assignment. This will help you stay focused and motivated.
+
+2. Break the task into smaller steps: If the assignment seems overwhelming, break it down into smaller, more manageable steps. This will help you"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,0,coding_ctx0,medusa_base,64,36,1.3333333333333333,2.2857142857142856,64.0,0.5254908950000186,0.5254645480000022,121.79088278969655,1.0,1.0,2703.287109375,2814.0,2048,0.048828125,2.1484375,1.25885009765625,0.52032470703125,0,0,63,0,1176,28,medusa,0,28,28,64,2048,284,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1176,0,fixed,0,1792,1.25885009765625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.25885009765625,9.0,64,1.7066666666666668,8,64,"Here's a Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings: list[str]) -> list[list[str]]:
+    """"""
+    Takes a list of strings and returns a list of lists, where each inner list"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,0,coding_ctx0,turbo_fast_24,64,36,1.3333333333333333,2.206896551724138,25.0,0.46933377200002724,0.46931216199999426,136.36350891023517,1.1196528491028512,1.0,2701.45458984375,2810.0,2048,0.048828125,2.1484375,1.25885009765625,0.52032470703125,0,0,24,0,551,29,medusa,0,29,29,64,2048,236,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,551,0,fixed,0,725,1.25885009765625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,1.25885009765625,9.0,64,1.7066666666666668,8,64,"Here's a Python function that groups strings by their first letter:
+
+```python
+def group_by_first_letter(strings: list[str]) -> list[list[str]]:
+    """"""
+    Takes a list of strings and returns a list of lists, where each inner list"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,512,technical_ctx512,medusa_base,64,526,1.3333333333333333,2.064516129032258,64.0,0.6750078940000321,0.6749836999999843,94.81370598607688,1.0,1.0,2725.2392578125,2834.0,2048,0.2880859375,12.67578125,7.427215576171875,3.069915771484375,0,0,63,0,1302,31,medusa,0,31,31,64,2048,774,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1302,0,fixed,0,1984,7.427215576171875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.427215576171875,9.0,64,1.7066666666666668,8,64,"1. Cache Locality:
+Cache locality refers to the ability of a cache to store and retrieve data based on the location of the data in the system. In distributed systems, cache locality is essential as it helps to reduce network latency and improve performance. However, poor cache locality can lead to data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,512,technical_ctx512,turbo_fast_24,64,526,1.3333333333333333,2.064516129032258,25.0,0.6041501220000214,0.6041264009999736,105.9339354068652,1.11728504128318,1.0,2725.39794921875,2830.0,2048,0.2880859375,12.67578125,7.427215576171875,3.069915771484375,0,0,24,0,589,31,medusa,0,31,31,64,2048,726,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,589,0,fixed,0,775,7.427215576171875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.427215576171875,9.0,64,1.7066666666666668,8,64,"1. Cache Locality:
+Cache locality refers to the ability of a cache to store and retrieve data based on the location of the data in the system. In distributed systems, cache locality is essential as it helps to reduce network latency and improve performance. However, poor cache locality can lead to data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,512,general_ctx512,medusa_base,64,528,1.3333333333333333,2.4615384615384617,64.0,0.6312687730000448,0.6312459330000024,101.38312353998771,1.0,1.0,2725.2919921875,2834.0,2048,0.2890625,12.71875,7.452392578125,3.080322265625,0,0,63,0,1092,26,medusa,0,26,26,64,2048,776,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1092,0,fixed,0,1664,7.452392578125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.452392578125,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning. A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning. A student"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,512,general_ctx512,turbo_fast_24,64,528,1.3333333333333333,2.3703703703703702,25.0,0.5290779190000308,0.5290564979999886,120.96516921545592,1.1931489679122445,1.0,2725.45068359375,2830.0,2048,0.2890625,12.71875,7.452392578125,3.080322265625,0,0,24,0,513,27,medusa,0,27,27,64,2048,728,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,513,0,fixed,0,675,7.452392578125,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.452392578125,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning. A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning. A student"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,512,coding_ctx512,medusa_base,64,544,1.3333333333333333,2.206896551724138,64.0,0.6261431399999537,0.6261105779999525,102.21304987866628,1.0,1.0,2725.7138671875,2834.0,2048,0.296875,13.0625,7.65380859375,3.16357421875,0,0,63,0,1218,29,medusa,0,29,29,64,2048,792,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1218,0,fixed,0,1856,7.65380859375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.65380859375,9.0,64,1.7066666666666668,8,64,"```python
+import time
+import numpy as np
+import cuda_kernels as ck
+import cpp_worker_pools as wp
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum of the two inputs.
+    """""""
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,512,coding_ctx512,turbo_fast_24,64,544,1.3333333333333333,2.1333333333333333,25.0,0.5855116519999797,0.5854902609999613,109.30610822413185,1.0693948410098857,1.0,2725.87255859375,2830.0,2048,0.296875,13.0625,7.65380859375,3.16357421875,0,0,24,0,570,30,medusa,0,30,30,64,2048,744,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,570,0,fixed,0,750,7.65380859375,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,7.65380859375,9.0,64,1.7066666666666668,8,64,"```python
+import time
+import numpy as np
+import cuda_kernels as ck
+import cpp_worker_pools as wp
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum of the two inputs.
+    """""""
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,1024,technical_ctx1024,medusa_base,64,1019,1.3333333333333333,2.4615384615384617,64.0,0.7135628229999611,0.7135402549999981,89.69077134782776,1.0,1.0,2749.27294921875,2846.0,2048,0.52880859375,23.267578125,13.633346557617188,5.6351165771484375,0,0,63,0,1092,26,medusa,0,26,26,64,2048,1267,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1092,0,fixed,0,1664,13.633346557617188,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,13.633346557617188,9.0,64,1.7066666666666668,8,64,"Distributed systems performance depends on a variety of factors, including cache locality, network latency, memory bandwidth, synchronization, scheduling, and profiling discipline. Here are some of the most important performance bottlenecks and optimization checklists:
+
+1. Cache locality: Ensure that data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,1024,technical_ctx1024,turbo_fast_24,64,1019,1.3333333333333333,2.3703703703703702,25.0,0.6236764040000367,0.6236537610000141,102.61731819502384,1.1441234884363511,1.0,2749.431640625,2844.0,2048,0.52880859375,23.267578125,13.633346557617188,5.6351165771484375,0,0,24,0,513,27,medusa,0,27,27,64,2048,1219,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,513,0,fixed,0,675,13.633346557617188,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,13.633346557617188,9.0,64,1.7066666666666668,8,64,"Distributed systems performance depends on a variety of factors, including cache locality, network latency, memory bandwidth, synchronization, scheduling, and profiling discipline. Here are some of the most important performance bottlenecks and optimization checklists:
+
+1. Cache locality: Ensure that data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,1024,general_ctx1024,medusa_base,64,1024,1.3333333333333333,2.56,64.0,0.6440819570000258,0.6440589709999927,99.36623639962862,1.0,1.0,2750.38037109375,2846.0,2048,0.53125,23.375,13.6962890625,5.6611328125,0,0,63,0,1050,25,medusa,0,25,25,64,2048,1272,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1050,0,fixed,0,1600,13.6962890625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,13.6962890625,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning.
+1. Prioritize your tasks: Identify the most important tasks and prioritize them based on their deadlines and importance.
+2. Set real"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,1024,general_ctx1024,turbo_fast_24,64,1024,1.3333333333333333,2.3703703703703702,25.0,0.6337710660000084,0.6337491180000256,100.9828366004944,1.0162691097040666,1.0,2750.5390625,2844.0,2048,0.53125,23.375,13.6962890625,5.6611328125,0,0,24,0,513,27,medusa,0,27,27,64,2048,1224,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,513,0,fixed,0,675,13.6962890625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,13.6962890625,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning.
+1. Prioritize your tasks: Identify the most important tasks and prioritize them based on their deadlines and importance.
+2. Set real"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,1024,coding_ctx1024,medusa_base,64,1051,1.3333333333333333,2.2857142857142856,64.0,0.716347896000002,0.7163206000000173,89.34206459929327,1.0,1.0,2751.21875,2890.0,2048,0.54443359375,23.955078125,14.036178588867188,5.8016204833984375,0,0,63,0,1176,28,medusa,0,28,28,64,2048,1299,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1176,0,fixed,0,1792,14.036178588867188,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,14.036178588867188,9.0,64,1.7066666666666668,8,64,"Here's a Python module that validates inputs, times two implementations, and reports the faster one:
+
+```python
+import time
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum.
+    """"""
+    if type(a)"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,1024,coding_ctx1024,turbo_fast_24,64,1051,1.3333333333333333,2.0,25.0,0.7300622919999569,0.7300393269999859,87.66375239662943,0.9812147591373537,1.0,2751.37744140625,2888.0,2048,0.54443359375,23.955078125,14.036178588867188,5.8016204833984375,0,0,24,0,608,32,medusa,0,32,32,64,2048,1251,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,608,0,fixed,0,800,14.036178588867188,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,14.036178588867188,9.0,64,1.7066666666666668,8,64,"Here's a Python module that validates inputs, times two implementations, and reports the faster one:
+
+```python
+import time
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum.
+    """"""
+    if type(a)"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,1536,technical_ctx1536,medusa_base,64,1512,1.3333333333333333,2.4615384615384617,64.0,0.759881680000035,0.7598592159999953,84.2236386064697,1.0,1.0,2772.11865234375,2912.0,2048,0.76953125,33.859375,19.8394775390625,8.2003173828125,0,0,63,0,1092,26,medusa,0,26,26,64,2048,1760,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1092,0,fixed,0,1664,19.8394775390625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.8394775390625,9.0,64,1.7066666666666668,8,64,"Distributed systems performance depends on a variety of factors, including cache locality, network latency, memory bandwidth, synchronization, scheduling, and profiling discipline. Here are some of the most important performance bottlenecks and optimization checklists:
+
+1. Cache locality: Ensure that data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,technical,1536,technical_ctx1536,turbo_fast_24,64,1512,1.3333333333333333,2.3703703703703702,25.0,0.7261653839999553,0.7261431029999699,88.13419285764789,1.0464306020955711,1.0,2772.27734375,2912.0,2048,0.76953125,33.859375,19.8394775390625,8.2003173828125,0,0,24,0,513,27,medusa,0,27,27,64,2048,1712,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,513,0,fixed,0,675,19.8394775390625,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.8394775390625,9.0,64,1.7066666666666668,8,64,"Distributed systems performance depends on a variety of factors, including cache locality, network latency, memory bandwidth, synchronization, scheduling, and profiling discipline. Here are some of the most important performance bottlenecks and optimization checklists:
+
+1. Cache locality: Ensure that data"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,1536,general_ctx1536,medusa_base,64,1520,1.3333333333333333,2.6666666666666665,64.0,0.7176153519999957,0.7175942470000223,89.18426817602473,1.0,1.0,2772.37646484375,2912.0,2048,0.7734375,34.03125,19.940185546875,8.241943359375,0,0,63,0,1008,24,medusa,0,24,24,64,2048,1768,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1008,0,fixed,0,1536,19.940185546875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.940185546875,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning.
+1. Prioritize your tasks: Identify the most important tasks and prioritize them based on their deadlines and importance.
+2. Set real"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,general,1536,general_ctx1536,turbo_fast_24,64,1520,1.3333333333333333,2.206896551724138,25.0,0.7706910579999544,0.7706650469999659,83.04235443718329,0.9311323189116827,0.602996254681648,2772.53515625,2912.0,2048,0.7734375,34.03125,19.940185546875,8.241943359375,0,0,24,0,551,29,medusa,0,29,29,64,2048,1720,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,551,0,fixed,0,725,19.940185546875,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.940185546875,9.0,64,1.7066666666666668,8,64,"A student is balancing lectures, project deadlines, sleep, exercise, family responsibilities, finances, and long-term career planning.
+1. Prioritize your tasks: Start by listing all the tasks you need to complete for the week. Prioritize them based on their importance and ur"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,1536,coding_ctx1536,medusa_base,64,1519,1.3333333333333333,2.206896551724138,64.0,0.8232987220000041,0.8232767220000028,77.73606139522184,1.0,1.0,2772.34423828125,2912.0,2048,0.77294921875,34.009765625,19.927597045898438,8.236740112304688,0,0,63,0,1218,29,medusa,0,29,29,64,2048,1767,0,63,4,2048,0,0,0,0,16384,0,0,0,0,0,1218,0,fixed,0,1856,19.927597045898438,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.927597045898438,9.0,64,1.7066666666666668,8,64,"Here's a Python module that validates inputs, times two implementations, and reports the faster one:
+
+```python
+import time
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum.
+    """"""
+    if type(a)"
+TinyLlama,TinyLlama-1.1B-Chat-v1.0-4heads,coding,1536,coding_ctx1536,turbo_fast_24,64,1519,1.3333333333333333,2.0,25.0,0.8229560500000161,0.8229333300000121,77.76843003948844,1.0004163916165245,1.0,2772.5029296875,2912.0,2048,0.77294921875,34.009765625,19.927597045898438,8.236740112304688,0,0,24,0,608,32,medusa,0,32,32,64,2048,1719,0,24,3,2048,0,0,0,0,16384,0,0,0,0,0,608,0,fixed,0,800,19.927597045898438,1.7066666666666668,3.875,23,8,4.129032258064516,9.375,19.927597045898438,9.0,64,1.7066666666666668,8,64,"Here's a Python module that validates inputs, times two implementations, and reports the faster one:
+
+```python
+import time
+
+def validate_inputs(a, b):
+    """"""
+    Validates the inputs and returns the sum.
+    """"""
+    if type(a)"

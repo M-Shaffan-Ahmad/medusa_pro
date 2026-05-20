@@ -2,6 +2,13 @@ import time
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+TARGET_NEW_TOKENS = 200
+
+
+def sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
 print("Loading Standard Baseline Model...")
 # Load the raw base model (No Medusa)
 tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
@@ -14,13 +21,15 @@ prompt = "<|user|>\nWrite a C++ program using MPI and OpenMP for parallel matrix
 inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
 print("Generating Autoregressively (1 token per pass)...")
-start_time = time.time()
+sync()
+start_time = time.perf_counter()
 
-with torch.no_grad():
+with torch.inference_mode():
     # Force greedy decoding (do_sample=False) for exact reproducibility
-    outputs = model.generate(**inputs, max_new_tokens=200, do_sample=False)
-    
-end_time = time.time()
+    outputs = model.generate(**inputs, max_new_tokens=TARGET_NEW_TOKENS, do_sample=False)
+
+sync()
+end_time = time.perf_counter()
 
 print("\n" + "-"*30)
 print(" BASELINE OUTPUT TEXT")

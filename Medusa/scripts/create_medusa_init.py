@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True, help="Folder to create.")
     parser.add_argument("--medusa-num-heads", type=int, default=4)
     parser.add_argument("--medusa-num-layers", type=int, default=1)
+    parser.add_argument("--draft-head-type", choices=("medusa", "hydra"), default="medusa")
     parser.add_argument(
         "--version",
         default="2",
@@ -35,6 +36,7 @@ def main() -> None:
         medusa_num_layers=args.medusa_num_layers,
         base_model_name_or_path=args.base_model,
         version=args.version,
+        draft_head_type=args.draft_head_type,
     )
     if str(args.version).lower() in {"2", "medusa2", "medusa-2"}:
         config.medusa_head_uses_base_lm_head = True

@@ -1,0 +1,11 @@
+category,mode,tokens,prompt_tokens,total_s,tps,peak_alloc_mb,peak_reserved_mb,text
+hpc,base_transformers,64,37,0.8020780870000408,79.79272970712232,2111.3955078125,2214.0,"To illustrate the overlap strategy in a MPI+OpenMP blocked GEMM example, let's consider the following code:
+
+```c++
+#include <mpi.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+using namespace std"
+systems,base_transformers,64,29,0.6701979350000329,95.49417665692577,2111.162109375,2212.0,"Strong scaling and weak scaling are two common approaches to scaling distributed systems. In strong scaling, the number of nodes in the system is increased while the number of processes or threads per node is kept constant. This approach is suitable for systems with a large number of nodes and a large number of processes or threads per node."

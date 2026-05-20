@@ -14,6 +14,7 @@ from medusa.model.medusa_model import MedusaModel
 MODEL_DIR = os.environ.get("MEDUSA_MODEL_DIR", "Medusa/TinyLlama-1.1B-Chat-v1.0-4heads")
 OUT_CSV = os.environ.get("OUT_CSV", "Medusa/tinyllama_turbo_best_old_heads_benchmark.csv")
 MAX_STEPS = int(os.environ.get("MAX_STEPS", "35"))
+MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "0"))
 
 PROMPTS = [
     ("hpc", "Write a concise C++ MPI+OpenMP blocked GEMM example and explain the overlap strategy."),
@@ -78,6 +79,10 @@ def run_one(model, prompt, medusa_choices, mode, kwargs):
     inputs = model.tokenizer(full_prompt, return_tensors="pt").to("cuda")
     first = None
     text = ""
+    stats = {}
+    call_kwargs = dict(kwargs)
+    call_kwargs.setdefault("collect_stats", True)
+    call_kwargs.setdefault("max_new_tokens", MAX_NEW_TOKENS)
     start = time.perf_counter()
     with torch.inference_mode():
         for out in model.medusa_generate(
@@ -87,15 +92,18 @@ def run_one(model, prompt, medusa_choices, mode, kwargs):
             max_steps=MAX_STEPS,
             sampling="typical",
             fast=True,
-            **kwargs,
+            **call_kwargs,
         ):
             if first is None:
                 sync()
                 first = time.perf_counter()
             text = out["text"]
+            stats = out.get("stats", stats)
     sync()
     end = time.perf_counter()
-    tokens = max(1, len(model.tokenizer(text, add_special_tokens=False).input_ids))
+    tokens = int(stats.get("generated_tokens", 0) or 0)
+    if tokens <= 0:
+        tokens = max(1, len(model.tokenizer(text, add_special_tokens=False).input_ids))
     return {
         "mode": mode,
         "tokens": tokens,

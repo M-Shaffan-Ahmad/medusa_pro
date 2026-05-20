@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 sys.path.insert(0, os.path.dirname(__file__))
 from bench_comm_turbo import build_prompts, reset_memory, sync
+from medusa.model.medusa_model import infer_model_context_window
 
 
 def main():
@@ -18,8 +19,14 @@ def main():
     parser.add_argument("--model-dir", required=True)
     parser.add_argument("--out-csv", default="base_transformers_benchmark.csv")
     parser.add_argument("--target-new-tokens", type=int, default=160)
-    parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed"), default="mixed")
+    parser.add_argument("--prompt-suite", choices=("technical", "general", "mixed", "coding"), default="mixed")
     parser.add_argument("--long-repeat", type=int, default=0)
+    parser.add_argument(
+        "--long-context-tokens",
+        type=int,
+        default=0,
+        help="Append a tokenizer-sized long-context prompt of roughly this many prompt tokens.",
+    )
     parser.add_argument("--long-only", action="store_true")
     parser.add_argument("--load-in-8bit", action="store_true")
     parser.add_argument("--load-in-4bit", action="store_true")
@@ -64,7 +71,10 @@ def main():
         args.long_repeat,
         long_only=args.long_only,
         prompt_suite=args.prompt_suite,
+        tokenizer=tokenizer,
+        long_context_tokens=args.long_context_tokens,
     )
+    model_context_window = infer_model_context_window(model.config, tokenizer=tokenizer)
     rows = []
     for category, prompt in prompts:
         reset_memory()
@@ -95,6 +105,8 @@ def main():
             "tps": generated_tokens / max(1e-6, end - start),
             "peak_alloc_mb": torch.cuda.max_memory_allocated() / (1024**2),
             "peak_reserved_mb": torch.cuda.max_memory_reserved() / (1024**2),
+            "model_context_window": model_context_window,
+            "context_utilization": (prompt_tokens + generated_tokens) / max(1, model_context_window),
             "text": text,
         }
         rows.append(row)
@@ -109,6 +121,8 @@ def main():
         "tps",
         "peak_alloc_mb",
         "peak_reserved_mb",
+        "model_context_window",
+        "context_utilization",
         "text",
     ]
     with open(args.out_csv, "w", newline="") as f:

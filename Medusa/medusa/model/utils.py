@@ -70,13 +70,21 @@ class QJLTokenSketchCache:
     then score them with packed XNOR-popcount before compacting tree nodes.
     """
 
-    def __init__(self, vocab_size, hidden_size, sketch_dim=128, device="cuda"):
+    def __init__(self, vocab_size, hidden_size, sketch_dim=128, device="cuda", seed: int = 0):
         self.vocab_size = int(vocab_size)
         self.hidden_size = int(hidden_size)
         self.sketch_dim = int(max(8, min(sketch_dim, hidden_size)))
         self.device = torch.device(device)
+        self.seed = int(seed)
 
-        proj = torch.randn(self.hidden_size, self.sketch_dim, device=self.device, dtype=torch.float32)
+        gen = torch.Generator(device="cpu")
+        gen.manual_seed((20260512 + self.hidden_size * 31 + self.sketch_dim * 17 + self.seed * 1_000_003) % (2**63 - 1))
+        proj = torch.randn(
+            self.hidden_size,
+            self.sketch_dim,
+            generator=gen,
+            dtype=torch.float32,
+        ).to(self.device)
         # QJL is defined with Gaussian rows. The paper orthogonalizes those rows
         # in practice; scaling by sqrt(d) keeps the row norm comparable to N(0, I).
         if self.sketch_dim <= self.hidden_size:
@@ -481,7 +489,11 @@ def reset_past_key_values(passed_key_values):
     """
     for i in range(len(passed_key_values)):
         for j in range(2):
-            passed_key_values[i][j].current_length.fill_(0)
+            kv_cache = passed_key_values[i][j]
+            if hasattr(kv_cache, "reset"):
+                kv_cache.reset()
+            else:
+                kv_cache.current_length.fill_(0)
     return passed_key_values
 
 def get_nucleus_one_token(logit, temperature, top_p):
@@ -2244,7 +2256,14 @@ def update_inference_inputs(
     # Update the past key values based on the selected tokens.
     if accept_len_int == 0:
         # The root candidate KV is already written at prev_input_len by tree_decoding,
-        # so copying that position onto itself only burns bandwidth.
+        # so copying that position onto itself only burns bandwidth for flat FP
+        # caches. Nested compressed caches still need copy() to trim their child
+        # lengths back from the full tree append to the single accepted root.
+        if past_key_values_data is None and past_key_values is not None:
+            root_index = select_indices[:1]
+            for layer_kv in past_key_values:
+                for kv_cache in layer_kv:
+                    kv_cache.copy(root_index, prev_input_len, dim=2)
         current_length_data.fill_(prev_input_len + 1)
     elif past_key_values_data is not None:
         copied = False
@@ -2322,6 +2341,11 @@ def update_inference_inputs_from_tree(
 
     if accept_len_int == 0:
         # The accepted root KV is already in the first tree slot.
+        if past_key_values_data is None and past_key_values is not None:
+            root_index = select_indices[:1]
+            for layer_kv in past_key_values:
+                for kv_cache in layer_kv:
+                    kv_cache.copy(root_index, prev_input_len, dim=2)
         current_length_data.fill_(prev_input_len + 1)
     elif past_key_values_data is not None:
         copied = False
