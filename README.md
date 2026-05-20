@@ -5,27 +5,26 @@
 Muhammad Shaffan Ahmad (23i-0673) and Hamza Tariq (23i-0519)
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/intro.png" alt="Turbo Medusa overview" width="92%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/intro.png" alt="Turbo Medusa overview" width="92%">
 </p>
 
-This repository extends the Medusa speculative-decoding framework with three
-project directions:
+This repository contains the Medusa project code in [Medusa/](Medusa/) and the
+final report material used for the project submission. The work extends Medusa
+speculative decoding in three directions:
 
 1. **TurboQuant KV-cache compression** for longer-context Medusa decoding on
    constrained GPUs.
-2. **Custom speculative tree sizing** so the verifier does not always pay for a
+2. **Custom speculative tree sizing** so verification does not always pay for a
    full 63/64-node tree.
-3. **Multi Minnions**, a set of small niche-specific Medusa head packs that can
-   be routed by task type.
-
-The final report and presentation are included in the repo:
+3. **Multi Minnions**, small niche-specific Medusa head packs that can be
+   routed by task type.
 
 | Artifact | File |
 | --- | --- |
-| Final report | [turbo_medusa_minions.pdf](artifacts/benchmarks/medusa/local_turbo_context_findings/turbo_medusa_minions.pdf) |
-| Presentation PDF | [presentation.pdf](presentation.pdf) |
-| Presentation HTML | [presentation.html](presentation.html) |
-| TinyLlama optimisation report | [tinyllama_medusa_optimisation_report.pdf](tinyllama_medusa_optimisation_report.pdf) |
+| Final report | [turbo_medusa_minions.pdf](Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/turbo_medusa_minions.pdf) |
+| Presentation PDF | [presentation.pdf](Medusa/presentation.pdf) |
+| Presentation HTML | [presentation.html](Medusa/presentation.html) |
+| TinyLlama optimisation report | [tinyllama_medusa_optimisation_report.pdf](Medusa/tinyllama_medusa_optimisation_report.pdf) |
 
 ## Motivation
 
@@ -36,32 +35,19 @@ context windows, however, the KV cache grows linearly with context length, tree
 verification can become unnecessarily expensive, and one generic head pack may
 not be equally good for coding, chat, summarization, and reasoning.
 
-This project targets those bottlenecks by reducing long-context KV memory
-pressure, calibrating Medusa tree size, and training small specialized head
-packs while keeping the base model unchanged.
+This project reduces long-context KV memory pressure, calibrates Medusa tree
+size, and explores task-specialized heads while keeping the base model
+unchanged.
 
 ## Main Findings
 
 | Area | Finding |
 | --- | --- |
 | TurboQuant KV cache | Reduced KV-cache size by roughly 3.6x and enabled 32k context on a 6 GB RTX 3060 Laptop GPU where base Medusa OOMed. |
-| Raw throughput | Current TurboQuant path stores compressed KV but decodes temporary dense K/V before attention, so it is a capacity win first rather than a raw TPS win. |
-| Custom trees | 24-node/custom trees beat full 63/64-node trees in the final sweeps for TinyLlama and Llama-3.2. |
-| Multi Minnions | Specialized head packs are promising: the coding-specialized Llama-3.2 heads reached 40.4% top-1 on head 1 after under 2 hours of RTX 3080 training. |
-| Reliability boundary | Exact verifier acceptance remains the correctness boundary; QJL and pruning are treated as planning signals, not final acceptance rules. |
-
-## SOTA Context
-
-| Work | Core idea | Relevance to this project | Gap targeted here |
-| --- | --- | --- | --- |
-| Speculative Decoding / Speculative Sampling | Use a cheaper draft model and verify several tokens with the target model. | Establishes draft-and-verify as the main latency reduction pattern. | Requires a good draft model and can add model-management cost. |
-| SpecInfer | Builds and verifies a speculative token tree. | Closest systems-level ancestor of Medusa-style tree verification. | Tree size should be hardware and acceptance aware. |
-| Medusa | Adds multiple draft heads directly to the target model and verifies candidate trees. | Base system used in this repo. | Fixed/default trees and generic heads are not always optimal. |
-| Hydra | Makes draft heads sequentially dependent to improve Medusa-style speculation quality. | Supports the idea that head architecture and conditioning matter. | This project explores domain specialization instead. |
-| EAGLE | Drafts in feature space for stronger speculative acceptance. | Shows stronger draft representations can outperform simple heads. | More complex drafting can be harder to train and deploy locally. |
-| PagedAttention / vLLM | Manages KV cache blocks to reduce serving fragmentation. | Orthogonal memory-management direction. | Does not compress numerical KV vectors directly. |
-| KVQuant / KIVI | Sub-4-bit KV-cache quantization using outlier-aware or asymmetric layouts. | Strong long-context KV compression baselines. | Accuracy and speed depend on metadata layout, calibration, and custom kernels. |
-| PolarQuant / QJL / TurboQuant | Polar transforms, 1-bit residual correction, and near-optimal online vector quantization. | Most direct SOTA context for this implementation. | Reported speedups require fused compressed-attention kernels; this repo still decodes temporary dense K/V. |
+| Raw throughput | Current TurboQuant stores compressed KV but decodes temporary dense K/V before attention, so it is a capacity win first. |
+| Custom trees | 24-node/custom trees beat full 63/64-node trees in the final TinyLlama and Llama-3.2 sweeps. |
+| Multi Minnions | Coding-specialized Llama-3.2 heads reached 40.4% top-1 on head 1 after under 2 hours of RTX 3080 training. |
+| Reliability | Exact verifier acceptance remains the correctness boundary; QJL and pruning are planning signals, not final acceptance rules. |
 
 ## TurboQuant KV Cache
 
@@ -75,28 +61,27 @@ attention read -> decode temporary K/V view -> verify/generate
 compressed cache remains stored
 ```
 
-TurboQuant therefore provides a capacity improvement first. It lowers peak GPU
-allocation and allows longer context windows than base Medusa on the same
-hardware. The expected throughput gain depends on removing the temporary dense
-decode path with fused compressed-attention kernels.
+TurboQuant lowers peak GPU allocation and allows longer context windows than
+base Medusa on the same hardware. The expected raw throughput gain depends on
+removing the temporary dense decode path with fused compressed-attention
+kernels.
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/throughput_vs_context.png" alt="Throughput vs context" width="82%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/throughput_vs_context.png" alt="Throughput vs context" width="82%">
 </p>
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/speed_ratio_vs_context.png" alt="TurboQuant speed ratio vs context" width="82%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/speed_ratio_vs_context.png" alt="TurboQuant speed ratio vs context" width="82%">
 </p>
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/memory_vs_context.png" alt="Memory vs context" width="82%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/memory_vs_context.png" alt="Memory vs context" width="82%">
 </p>
 
 ### Long-Context Measurements
 
 The local measurements were run on an RTX 3060 Laptop GPU with 6 GB VRAM and
-32 generated tokens per context point. The 32k base Medusa run OOMed during
-initial prompt prefill.
+32 generated tokens per context point.
 
 | Context | Base TPS | TurboQuant b4 TPS | Speed Ratio | Base Peak MB | Turbo Peak MB | Base KV Cache MB | Turbo KV Cache MB |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -107,9 +92,8 @@ initial prompt prefill.
 | 16,384 | 8.10 | 4.49 | 0.554 | 4466.8 | 4093.0 | 504.3 | 137.9 |
 | 32,768 | OOM | 2.20 | N/A | OOM | 5227.5 | 1005.0 | 274.8 |
 
-At 16k context, base Medusa and TurboQuant both fit, but TurboQuant used about
-374 MB less peak allocation. At 32k context, base Medusa OOMed while
-TurboQuant b4 completed at 2.20 TPS.
+At 16k context, TurboQuant used about 374 MB less peak allocation. At 32k
+context, base Medusa OOMed while TurboQuant b4 completed at 2.20 TPS.
 
 ## Custom Tree Size
 
@@ -119,10 +103,8 @@ or task predictability is not high enough, many extra nodes do not translate
 into accepted tokens.
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/tree.png" alt="Custom tree-size summary" width="82%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/tree.png" alt="Custom tree-size summary" width="82%">
 </p>
-
-### Tree Sweep Summary
 
 | Model / setting | 64-node/full tree max TPS | 24-node/custom tree max TPS | Finding |
 | --- | ---: | ---: | --- |
@@ -131,8 +113,8 @@ into accepted tokens.
 | Quick calibration sweep | 108.40 TPS | **129.04 TPS** | The 24-node setting also won in the quick calibration run, about **1.19x** over the full-tree max. |
 
 <p align="center">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/llma3.2.jpeg" alt="Llama 3.2 tree sweep" width="48%">
-  <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/tiny.jpeg" alt="TinyLlama tree sweep" width="48%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/llma3.2.jpeg" alt="Llama 3.2 tree sweep" width="48%">
+  <img src="Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/tiny.jpeg" alt="TinyLlama tree sweep" width="48%">
 </p>
 
 The better policy is to sweep candidate limits such as 8, 16, 24, 32, 40, and
@@ -142,8 +124,8 @@ full tree as a fallback rather than the default answer.
 ## Multi Minnions
 
 Medusa heads are small compared with the base model, so they are cheap to train
-and easy to swap. Multi Minnions means training several small speculative head
-packs, each specialized for a narrow workload.
+and easy to swap. Multi Minnions trains several small speculative head packs,
+each specialized for a narrow workload.
 
 ```text
 base LLM
@@ -155,67 +137,56 @@ base LLM
 ```
 
 At inference time, a lightweight router can select a head pack based on prompt
-type, or the user can explicitly choose one. The base model remains unchanged.
-
-Specialized heads help because task-specific data lowers the entropy of the
-next-token distribution seen by the heads. The local coding-specialized
-Llama-3.2 Medusa heads reached a validation score of 0.410 on the coding
-corpus with these head top-1 accuracies:
+type, or the user can explicitly choose one. The local coding-specialized
+Llama-3.2 Medusa heads reached a validation score of 0.410 on the coding corpus
+with these head top-1 accuracies:
 
 ```text
 head1 40.4%, head2 22.1%, head3 14.7%, head4 10.7%
 ```
 
-The earlier mixed Llama-3.2 head run logged a score of 0.174, which supports
-the direction that niche heads can become much stronger on their target domain.
+The earlier mixed Llama-3.2 head run logged a score of 0.174, supporting the
+direction that niche heads can become much stronger on their target domain.
 
 ## TinyLlama Medusa Path
 
-The TinyLlama report targets `TinyLlama/TinyLlama-1.1B-Chat-v1.0` with a local
-four-head Medusa configuration. The implementation uses tree decoding and
-compares standard autoregressive generation against Medusa generation,
-reduced-tree Turbo modes, Triton-assisted kernels, QJL pruning signals,
-KV-cache compression, and self-distilled Medusa head training.
+The TinyLlama work targets `TinyLlama/TinyLlama-1.1B-Chat-v1.0` with a local
+four-head Medusa configuration and exact base-model verification.
 
 | Item | Value |
 | --- | --- |
 | Base model | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` |
-| Local Medusa config | `TinyLlama-1.1B-Chat-v1.0-4heads/` |
+| Local Medusa config | `Medusa/TinyLlama-1.1B-Chat-v1.0-4heads/` |
 | Medusa heads | 4 |
 | Medusa layers | 1 |
 | Decoding strategy | Tree decoding |
 | Reliable verifier | Exact base-model acceptance |
 
 The key conclusion is that Medusa performance is governed by accepted tokens
-per decoding step, not tree size alone. Reduced trees can lower verifier work,
-but they only improve end-to-end speed when they preserve enough accepted
-prefix depth.
+per decoding step, not tree size alone. Reduced trees only improve end-to-end
+speed when they preserve enough accepted prefix depth.
 
 ## Repository Map
 
 | Path | Purpose |
 | --- | --- |
-| `medusa/model/medusa_model.py` | Medusa model wrapper and generation path. |
-| `medusa/model/medusa_choices.py` | Full and reduced speculative tree definitions. |
-| `medusa/model/kv_cache.py` | FP16, packed QJL, TurboVQ, hybrid, and polar KV-cache experiments. |
-| `medusa/model/triton_kernels.py` | Triton fast paths for QJL scoring, selection, cache operations, and argmax. |
-| `bench_transformers_base.py` | Hugging Face autoregressive baseline benchmark. |
-| `bench_medusa.py` | Medusa benchmark entrypoint. |
-| `bench_comm_turbo.py` | Communication/TurboQuant and tree-sweep benchmark harness. |
-| `run_batch_benchmark.py` | Batch prompt-suite benchmark driver. |
-| `train_tinyllama_medusa_heads.py` | Self-distillation training path for TinyLlama Medusa heads. |
-| `kaggle_mix_and_train_medusa.py` | Mixed dataset training recipe for Medusa heads. |
-| `artifacts/benchmarks/medusa/local_turbo_context_findings/` | Final report, plots, and generated benchmark artifacts. |
+| `Medusa/medusa/model/medusa_model.py` | Medusa model wrapper and generation path. |
+| `Medusa/medusa/model/medusa_choices.py` | Full and reduced speculative tree definitions. |
+| `Medusa/medusa/model/kv_cache.py` | FP16, packed QJL, TurboVQ, hybrid, and polar KV-cache experiments. |
+| `Medusa/medusa/model/triton_kernels.py` | Triton fast paths for QJL scoring, selection, cache operations, and argmax. |
+| `Medusa/bench_transformers_base.py` | Hugging Face autoregressive baseline benchmark. |
+| `Medusa/bench_medusa.py` | Medusa benchmark entrypoint. |
+| `Medusa/bench_comm_turbo.py` | Communication/TurboQuant and tree-sweep benchmark harness. |
+| `Medusa/run_batch_benchmark.py` | Batch prompt-suite benchmark driver. |
+| `Medusa/train_tinyllama_medusa_heads.py` | Self-distillation training path for TinyLlama Medusa heads. |
+| `Medusa/artifacts/benchmarks/medusa/local_turbo_context_findings/` | Final report, plots, and generated benchmark artifacts. |
 
 ## Reproducing Benchmarks
 
-Install the repo in editable mode:
-
 ```bash
+cd Medusa
 pip install -e .
 ```
-
-Run a plain autoregressive baseline:
 
 ```bash
 python bench_transformers_base.py \
@@ -224,8 +195,6 @@ python bench_transformers_base.py \
   --target-new-tokens 160 \
   --prompt-suite mixed
 ```
-
-Run Medusa/Turbo tree sweeps:
 
 ```bash
 python bench_comm_turbo.py \
@@ -236,8 +205,6 @@ python bench_comm_turbo.py \
   --choice-sweep 24,32
 ```
 
-Run the batch benchmark driver:
-
 ```bash
 python run_batch_benchmark.py
 ```
@@ -245,7 +212,7 @@ python run_batch_benchmark.py
 Generated CSV files are the source of truth for exact averaged throughput,
 prefix-match, acceptance, and memory values.
 
-## Final Configuration Recommendation
+## Final Recommendation
 
 | Component | Recommendation |
 | --- | --- |
@@ -286,8 +253,6 @@ prefix-match, acceptance, and memory values.
 - Zandieh et al. [TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate](https://arxiv.org/abs/2504.19874), 2025.
 
 ## Citation
-
-This project builds on the original Medusa framework:
 
 ```bibtex
 @article{cai2024medusa,

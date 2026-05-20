@@ -3,119 +3,167 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Medusa LLM Acceleration Presentation</title>
+  <title>Medusa Acceleration Extensions: TurboQuant, Custom Trees, Multi Minnions</title>
   <style>
     :root {
-      --bg: #eef3f8;
-      --slide: #fbfcff;
-      --ink: #111827;
-      --muted: #526072;
-      --line: #d7e0ec;
-      --teal: #008f8c;
+      --bg: #f5f7fb;
+      --paper: #ffffff;
+      --ink: #142033;
+      --muted: #5b6678;
+      --line: #dce3ee;
       --blue: #2563eb;
-      --coral: #ef6f4e;
-      --gold: #c98610;
+      --red: #dc2626;
       --green: #148b5f;
-      --red: #b91c1c;
-      --dark: #111827;
-      --soft: #f6f8fc;
-      --shadow: 0 22px 55px rgba(22, 34, 51, 0.13);
+      --gold: #b7791f;
+      --violet: #7c3aed;
+      --soft-blue: #eaf1ff;
+      --soft-red: #fff0ed;
+      --soft-green: #eaf8f2;
+      --shadow: 0 18px 44px rgba(20, 32, 51, 0.10);
+      --slide-pad: 24px;
+      --topbar-h: 56px;
     }
 
     * {
       box-sizing: border-box;
     }
 
-    html,
-    body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    html {
+      scroll-behavior: smooth;
+      scroll-snap-type: y proximity;
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
+    body {
+      margin: 0;
+      color: var(--ink);
       background:
-        linear-gradient(rgba(17, 24, 39, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(17, 24, 39, 0.035) 1px, transparent 1px);
-      background-size: 48px 48px;
-      pointer-events: none;
+        linear-gradient(rgba(20, 32, 51, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20, 32, 51, 0.035) 1px, transparent 1px),
+        var(--bg);
+      background-size: 44px 44px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.42;
     }
 
     a {
-      color: inherit;
+      color: var(--blue);
       text-decoration: none;
     }
 
-    .deck {
-      position: relative;
-      width: 100vw;
-      height: 100svh;
-      min-height: 720px;
+    a:hover {
+      text-decoration: underline;
     }
 
-    .slide {
-      position: absolute;
-      inset: 0;
-      display: none;
-      padding: 34px 44px 54px;
-    }
-
-    .slide.active {
-      display: block;
-    }
-
-    .canvas {
-      position: relative;
-      width: min(1240px, calc(100vw - 88px));
-      height: min(700px, calc(100svh - 88px));
-      min-height: 620px;
+    .page {
+      width: min(1280px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 34px 38px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--slide);
-      box-shadow: var(--shadow);
+      padding: 12px 0 36px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      margin: 0 0 10px;
+      padding: 8px 0;
+      background: rgba(245, 247, 251, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(220, 227, 238, 0.75);
+    }
+
+    .nav {
+      width: min(1280px, calc(100% - 28px));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--blue), var(--green));
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+    }
+
+    .navlinks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .navlinks a {
+      color: var(--muted);
+    }
+
+    .navlinks a[aria-current="page"] {
+      color: var(--blue);
+    }
+
+    section {
+      position: relative;
+      min-height: calc(100vh - var(--topbar-h) - 18px);
+      margin: 0 0 12px;
+      padding: var(--slide-pad);
       overflow: hidden;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      gap: 24px;
+      scroll-margin-top: calc(var(--topbar-h) + 12px);
+      scroll-snap-align: start;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: var(--shadow);
     }
 
-    .slide.dark .canvas {
-      color: #f9fafb;
-      border-color: rgba(255, 255, 255, 0.18);
-      background:
-        linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(20, 50, 54, 0.96)),
-        #111827;
+    section.fit-active {
+      height: calc(100vh - var(--topbar-h) - 18px);
     }
 
-    .header {
+    section.fit-active .slide-fit {
+      position: absolute;
+      top: var(--slide-pad);
+      left: var(--slide-pad);
+    }
+
+    .slide-fit {
+      width: 100%;
+      transform-origin: top left;
+    }
+
+    .hero {
+      padding: clamp(24px, 3vh, 38px);
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
-      align-items: start;
-      gap: 26px;
-      min-height: 0;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    .hero > .slide-fit {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 32px;
+      align-items: center;
     }
 
     .kicker {
-      margin: 0 0 9px;
-      color: var(--teal);
+      margin: 0 0 10px;
+      color: var(--green);
       font-size: 13px;
-      line-height: 1;
       font-weight: 850;
-      letter-spacing: 0.11em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-    }
-
-    .slide.dark .kicker {
-      color: #7dd3d0;
     }
 
     h1,
@@ -127,1490 +175,1202 @@
     }
 
     h1 {
-      max-width: 900px;
-      font-size: clamp(58px, 6.2vw, 84px);
+      max-width: 760px;
+      font-size: clamp(38px, 5.2vw, 66px);
       line-height: 0.98;
-      font-weight: 870;
+      font-weight: 900;
     }
 
     h2 {
-      max-width: 960px;
-      font-size: clamp(32px, 3.3vw, 44px);
+      margin: 0 0 12px;
+      font-size: clamp(24px, 2.45vw, 34px);
       line-height: 1.08;
-      font-weight: 850;
+      font-weight: 880;
     }
 
     h3 {
-      font-size: 22px;
+      margin: 0 0 8px;
+      font-size: 16px;
       line-height: 1.2;
-      font-weight: 810;
+      font-weight: 820;
     }
 
     .lead {
-      max-width: 560px;
+      margin-top: 18px;
+      max-width: 720px;
       color: var(--muted);
-      font-size: 20px;
+      font-size: 16px;
       line-height: 1.45;
       font-weight: 520;
     }
 
-    .slide.dark .lead,
-    .slide.dark .muted,
-    .slide.dark .small-note {
-      color: #d8e2f0;
-    }
-
-    .content {
-      min-height: 0;
+    .grid {
       display: grid;
-      gap: 22px;
+      gap: 14px;
     }
 
-    .content.center {
-      align-content: center;
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .two-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      min-height: 0;
-      align-items: stretch;
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .two-col.wide-left {
-      grid-template-columns: 1.12fr 0.88fr;
-    }
-
-    .two-col.wide-right {
-      grid-template-columns: 0.88fr 1.12fr;
-    }
-
-    .three-col {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 18px;
-      min-height: 0;
-    }
-
-    .four-col {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      min-height: 0;
-    }
-
-    .panel,
-    .metric,
-    .file-card {
+    .stat {
+      padding: 16px;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 12px 32px rgba(22, 34, 51, 0.08);
+      border-radius: 10px;
+      background: var(--paper);
     }
 
-    .panel {
-      padding: 24px;
-      min-height: 0;
-      display: grid;
-      gap: 18px;
-      align-content: start;
-    }
-
-    .slide.dark .panel,
-    .slide.dark .metric,
-    .slide.dark .file-card {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: rgba(255, 255, 255, 0.18);
-      box-shadow: none;
-    }
-
-    .metric {
-      padding: 22px;
-      display: grid;
-      gap: 9px;
-      align-content: start;
-      min-height: 132px;
-    }
-
-    .metric-label {
+    .stat small {
+      display: block;
+      margin-bottom: 8px;
       color: var(--muted);
-      font-size: 13px;
-      font-weight: 850;
-      letter-spacing: 0.09em;
+      font-size: 12px;
+      font-weight: 840;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
-    .slide.dark .metric-label {
-      color: #c9d4e6;
-    }
-
-    .metric-value {
+    .stat strong {
+      display: block;
       color: var(--ink);
-      font-size: 44px;
+      font-size: 30px;
       line-height: 1;
-      font-weight: 880;
+      font-weight: 900;
     }
 
-    .slide.dark .metric-value {
-      color: #fff;
-    }
-
-    .metric p,
-    .panel p,
-    .file-card p {
+    .stat span {
+      display: block;
+      margin-top: 8px;
       color: var(--muted);
-      font-size: 18px;
-      line-height: 1.42;
-      font-weight: 520;
+      font-size: 13px;
     }
 
-    .slide.dark .metric p,
-    .slide.dark .panel p,
-    .slide.dark .file-card p {
-      color: #d8e2f0;
+    .note {
+      padding: 12px 14px;
+      border-left: 5px solid var(--blue);
+      border-radius: 8px;
+      background: var(--soft-blue);
+      color: #213657;
+      font-size: 12.5px;
+      font-weight: 620;
     }
 
-    .bullets {
-      display: grid;
-      gap: 15px;
+    .warn {
+      border-left-color: var(--red);
+      background: var(--soft-red);
+    }
+
+    .ok {
+      border-left-color: var(--green);
+      background: var(--soft-green);
+    }
+
+    ul {
       margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .bullets li {
-      position: relative;
-      padding-left: 28px;
+      padding-left: 20px;
       color: var(--muted);
-      font-size: 19px;
-      line-height: 1.42;
-      font-weight: 540;
     }
 
-    .bullets li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0.58em;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--teal);
+    li + li {
+      margin-top: 7px;
     }
 
-    .slide.dark .bullets li {
-      color: #e1e8f2;
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      font-size: 12px;
     }
 
-    .slide.dark .bullets li::before {
-      background: var(--coral);
+    th,
+    td {
+      padding: 6px 7px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
     }
 
-    .tag-row {
-      display: flex;
-      flex-wrap: wrap;
+    th {
+      color: #24334a;
+      background: #eef3fb;
+      font-size: 10px;
+      font-weight: 840;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .image-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    figure {
+      margin: 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      max-height: min(48vh, 390px);
+      height: auto;
+      object-fit: contain;
+      border-radius: 7px;
+    }
+
+    figcaption {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    #results figure img {
+      max-height: min(42vh, 330px);
+    }
+
+    #throughput-drop figure img {
+      max-height: min(50vh, 410px);
+    }
+
+    #custom-tree figure img {
+      max-height: min(54vh, 440px);
+    }
+
+    .tree-example-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .tree-diagram {
+      min-height: 430px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background:
+        linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px),
+        #fbfdff;
+      background-size: 28px 28px;
+    }
+
+    .tree-diagram svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 390px;
+    }
+
+    .tree-link {
+      stroke: #b6c4d8;
+      stroke-width: 2;
+      fill: none;
+    }
+
+    .tree-link.weak {
+      stroke: #f0a79b;
+      stroke-dasharray: 5 5;
+    }
+
+    .tree-node {
+      fill: #fff;
+      stroke: #7e8da3;
+      stroke-width: 2;
+    }
+
+    .tree-node.good {
+      fill: var(--soft-green);
+      stroke: var(--green);
+    }
+
+    .tree-node.mid {
+      fill: var(--soft-blue);
+      stroke: var(--blue);
+    }
+
+    .tree-node.bad {
+      fill: var(--soft-red);
+      stroke: var(--red);
+    }
+
+    .tree-label {
+      fill: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    .tree-caption {
+      fill: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .tree-callout {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+    }
+
+    .tree-callout + .tree-callout {
+      margin-top: 12px;
+    }
+
+    .tree-callout b {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
+    }
+
+    .tree-callout span {
+      display: block;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .method {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+    }
+
+    .method .tag {
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: #edf4ff;
+      color: var(--blue);
+      font-weight: 850;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
       align-items: center;
     }
 
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      min-height: 32px;
-      padding: 7px 12px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--soft);
-      color: var(--ink);
-      font-size: 14px;
-      font-weight: 780;
-      white-space: nowrap;
-    }
-
-    .slide.dark .tag {
-      color: #f9fafb;
-      background: rgba(255, 255, 255, 0.10);
-      border-color: rgba(255, 255, 255, 0.22);
-    }
-
-    .visual {
-      min-height: 0;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
-
-    .visual img {
-      display: block;
-      max-width: 100%;
-      max-height: 330px;
-      border-radius: 8px;
-      object-fit: contain;
-    }
-
-    .visual.tall img {
-      max-height: 320px;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.04fr 0.96fr;
-      gap: 30px;
-      align-items: center;
-      min-height: 0;
-    }
-
-    .hero-copy {
-      display: grid;
-      gap: 26px;
-      align-content: center;
-    }
-
-    .speed-card {
-      min-height: 440px;
-      padding: 28px;
-      border-radius: 8px;
-      background:
-        linear-gradient(145deg, rgba(0, 143, 140, 0.22), rgba(37, 99, 235, 0.15)),
-        rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      display: grid;
-      align-content: center;
-      gap: 26px;
-    }
-
-    .speed-number {
-      font-size: 118px;
-      line-height: 0.85;
-      font-weight: 900;
-    }
-
-    .speed-card p {
-      color: #d8e2f0;
-      font-size: 24px;
-      line-height: 1.25;
-      font-weight: 650;
-    }
-
-    .chart-title {
-      font-size: 18px;
-      font-weight: 820;
-      color: var(--ink);
-    }
-
-    .slide.dark .chart-title {
-      color: #fff;
-    }
-
-    svg {
-      max-width: 100%;
-      height: auto;
-      overflow: visible;
-      font-family: inherit;
-    }
-
-    .axis-label {
-      fill: var(--muted);
-      font-size: 15px;
-      font-weight: 650;
-    }
-
-    .chart-label {
-      fill: var(--ink);
-      font-size: 18px;
-      font-weight: 820;
-    }
-
-    .slide.dark .axis-label {
-      fill: #c9d4e6;
-    }
-
-    .slide.dark .chart-label {
-      fill: #f9fafb;
-    }
-
-    .timeline {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 14px;
-      align-items: stretch;
-    }
-
     .step {
-      min-height: 172px;
-      padding: 18px;
+      min-height: 82px;
+      padding: 12px;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      display: grid;
-      gap: 11px;
-      align-content: start;
+      border-radius: 10px;
+      background: var(--paper);
     }
 
-    .step-num {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      border-radius: 50%;
-      background: var(--teal);
-      color: #fff;
-      font-weight: 850;
-    }
-
-    .step:nth-child(2) .step-num {
-      background: var(--blue);
-    }
-
-    .step:nth-child(3) .step-num {
-      background: var(--gold);
-    }
-
-    .step:nth-child(4) .step-num {
-      background: var(--coral);
-    }
-
-    .step:nth-child(5) .step-num {
-      background: var(--green);
-    }
-
-    .step:nth-child(6) .step-num {
-      background: var(--dark);
+    .step b {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
     }
 
     .step p {
       color: var(--muted);
-      font-size: 16px;
-      line-height: 1.35;
-      font-weight: 520;
-    }
-
-    .flow {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 13px;
-      align-items: stretch;
-    }
-
-    .flow-box {
-      padding: 18px;
-      min-height: 142px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      display: grid;
-      gap: 9px;
-      align-content: start;
-    }
-
-    .flow-box strong {
-      font-size: 20px;
-      line-height: 1.18;
-    }
-
-    .flow-box span {
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.35;
-      font-weight: 520;
-    }
-
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 18px;
-      overflow: hidden;
-      border-radius: 8px;
-    }
-
-    .table th,
-    .table td {
-      padding: 15px 16px;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      vertical-align: top;
-    }
-
-    .table th {
-      color: var(--muted);
       font-size: 13px;
-      font-weight: 850;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      background: var(--soft);
     }
 
-    .table tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .table strong {
-      font-weight: 830;
-    }
-
-    .code {
-      display: inline-block;
-      padding: 3px 7px;
-      border-radius: 5px;
-      background: #eef2f7;
-      color: #223044;
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      font-size: 0.92em;
-      font-weight: 700;
-    }
-
-    .slide.dark .code {
-      background: rgba(255, 255, 255, 0.13);
-      color: #f9fafb;
-    }
-
-    .decision {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-      align-items: stretch;
-    }
-
-    .decision-box {
-      padding: 18px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #fff;
-      min-height: 170px;
-      display: grid;
-      gap: 10px;
-      align-content: start;
-    }
-
-    .decision-box .label {
+    .arrow {
       color: var(--muted);
-      font-size: 13px;
-      font-weight: 850;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .decision-box p {
-      font-size: 18px;
-    }
-
-    .donut-wrap {
-      display: grid;
-      grid-template-columns: 240px 1fr;
-      gap: 24px;
-      align-items: center;
-    }
-
-    .donut {
-      width: 220px;
-      height: 220px;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle, #fff 0 41%, transparent 42%),
-        conic-gradient(var(--teal) 0 70%, var(--blue) 70% 85%, var(--gold) 85% 95%, var(--coral) 95% 100%);
-      border: 1px solid var(--line);
-      box-shadow: 0 12px 32px rgba(22, 34, 51, 0.08);
-    }
-
-    .legend {
-      display: grid;
-      gap: 12px;
-    }
-
-    .legend-row {
-      display: grid;
-      grid-template-columns: 18px 1fr auto;
-      gap: 10px;
-      align-items: center;
-      color: var(--muted);
-      font-size: 18px;
-      font-weight: 650;
-    }
-
-    .swatch {
-      width: 18px;
-      height: 18px;
-      border-radius: 4px;
-      background: var(--teal);
-    }
-
-    .legend-row:nth-child(2) .swatch {
-      background: var(--blue);
-    }
-
-    .legend-row:nth-child(3) .swatch {
-      background: var(--gold);
-    }
-
-    .legend-row:nth-child(4) .swatch {
-      background: var(--coral);
-    }
-
-    .failure-chain {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-    }
-
-    .chain-box {
-      padding: 18px;
-      min-height: 130px;
-      border-radius: 8px;
-      color: #fff;
-      background: var(--dark);
-      display: grid;
-      align-content: center;
       text-align: center;
-      font-size: 20px;
-      line-height: 1.24;
-      font-weight: 800;
+      font-weight: 900;
     }
 
-    .chain-box:nth-child(2) {
-      background: var(--blue);
+    .refs {
+      columns: 2;
+      column-gap: 34px;
+      font-size: 12px;
     }
 
-    .chain-box:nth-child(3) {
-      background: var(--coral);
+    .refs li {
+      break-inside: avoid;
+      margin: 0 0 10px;
     }
 
-    .chain-box:nth-child(4) {
-      background: var(--red);
+    footer {
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+      padding: 18px 0 0;
     }
 
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 13px;
-    }
-
-    .file-card {
-      padding: 15px;
-      min-height: 96px;
-      display: grid;
+    .slide-controls {
+      position: fixed;
+      right: 0px;
+      bottom: 0px;
+      z-index: 30;
+      display: flex;
+      align-items: center;
       gap: 8px;
-      box-shadow: none;
+      padding: 2px;
+      border: 1px solid rgba(220, 227, 238, 0.95);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 14px 32px rgba(20, 32, 51, 0.16);
+      backdrop-filter: blur(12px);
     }
 
-    .file-card code {
+    .slide-btn {
+      min-width: 68px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
       color: var(--ink);
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      font-size: 13px;
-      line-height: 1.25;
-      font-weight: 760;
-      word-break: break-word;
-    }
-
-    .file-card p {
-      font-size: 14px;
-      line-height: 1.3;
-    }
-
-    .small-note {
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.35;
-      font-weight: 560;
-    }
-
-    .footer {
-      position: fixed;
-      left: 0;
-      right: 0;
-      top: 0;
-      z-index: 5;
-      display: block;
-      height: 6px;
-      pointer-events: none;
-    }
-
-    .brand {
-      display: none;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 830;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    .count {
-      display: none;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 850;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    body.dark-active .brand,
-    body.dark-active .count {
-      color: #d8e2f0;
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 6px;
-      border-radius: 0;
-      background: rgba(17, 24, 39, 0.12);
-      overflow: hidden;
-    }
-
-    body.dark-active .progress-track {
-      background: rgba(255, 255, 255, 0.17);
-    }
-
-    .progress {
-      width: 0;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--teal), var(--blue), var(--coral));
-    }
-
-    .controls {
-      position: fixed;
-      right: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 6;
-      display: grid;
-      gap: 10px;
-    }
-
-    .nav {
-      position: relative;
-      width: 38px;
-      height: 38px;
-      border: 1px solid rgba(17, 24, 39, 0.18);
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.82);
-      box-shadow: 0 10px 24px rgba(22, 34, 51, 0.17);
       cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 820;
     }
 
-    .nav::before {
-      content: "";
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 11px;
-      height: 11px;
-      border-top: 2px solid var(--ink);
-      border-right: 2px solid var(--ink);
-      transform-origin: center;
+    .slide-btn:hover:not(:disabled) {
+      border-color: rgba(37, 99, 235, 0.65);
+      color: var(--blue);
     }
 
-    .nav.prev::before {
-      transform: translate(-35%, -50%) rotate(-135deg);
+    .slide-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
     }
 
-    .nav.next::before {
-      transform: translate(-65%, -50%) rotate(45deg);
+    .slide-count {
+      min-width: 62px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 820;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
     }
 
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    @media (max-width: 1080px) {
-      .deck {
-        min-height: 760px;
+    @media (max-width: 900px) {
+      html {
+        scroll-snap-type: none;
       }
 
-      .canvas {
-        min-height: 680px;
+      section,
+      section.fit-active {
+        height: auto !important;
+        min-height: 0;
+        overflow: visible;
       }
 
-      .two-col,
-      .two-col.wide-left,
-      .two-col.wide-right,
-      .hero-grid {
+      .slide-fit,
+      section.fit-active .slide-fit {
+        position: static;
+        width: 100% !important;
+        transform: none !important;
+      }
+
+      .hero,
+      .hero > .slide-fit,
+      .grid.two,
+      .grid.three,
+      .image-row,
+      .tree-example-grid,
+      .pipeline,
+      .method {
         grid-template-columns: 1fr;
       }
 
-      .three-col,
-      .four-col,
-      .timeline,
-      .flow,
-      .decision,
-      .failure-chain,
-      .file-grid {
-        grid-template-columns: 1fr 1fr;
+      .arrow {
+        display: none;
       }
 
-      .donut-wrap {
-        grid-template-columns: 1fr;
+      .refs {
+        columns: 1;
+      }
+
+      section {
+        padding: 24px;
+      }
+
+      .slide-controls {
+        right: 12px;
+        bottom: 12px;
       }
     }
 
-    @media (max-height: 760px) {
-      .slide {
-        padding-top: 24px;
+    @media (min-width: 901px) and (max-height: 820px) {
+      :root {
+        --slide-pad: 18px;
       }
 
-      .canvas {
-        height: min(642px, calc(100svh - 74px));
-        min-height: 600px;
-        padding: 28px 32px;
-        gap: 18px;
+      .page {
+        padding-top: 12px;
       }
 
       h1 {
-        font-size: clamp(54px, 5.7vw, 76px);
+        font-size: clamp(34px, 4.4vw, 56px);
       }
 
       h2 {
-        font-size: clamp(31px, 3.2vw, 42px);
+        font-size: clamp(22px, 2.2vw, 30px);
       }
 
-      .lead,
-      .bullets li {
-        font-size: 18px;
+      .lead {
+        font-size: 15px;
       }
 
-      .visual img {
-        max-height: 300px;
-      }
-    }
-
-    @media print {
-      html,
-      body {
-        overflow: visible;
-        background: #fff;
+      .stat strong {
+        font-size: 26px;
       }
 
-      .deck {
-        height: auto;
+      figure img {
+        max-height: min(44vh, 340px);
       }
 
-      .slide,
-      .slide.active {
-        position: relative;
-        display: block;
-        page-break-after: always;
+      th,
+      td {
+        padding: 6px 7px;
       }
 
-      .canvas {
-        width: 100%;
-        height: 100vh;
-        box-shadow: none;
-      }
-
-      .footer,
-      .controls {
-        display: none;
+      .note {
+        padding: 12px 14px;
       }
     }
   </style>
 </head>
 <body>
-  <main class="deck">
-    <section class="slide dark active" data-title="Title">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">PDC project presentation</p>
-            <h1>Medusa LLM Acceleration</h1>
-          </div>
-          <div class="tag-row">
-            <span class="tag">TinyLlama 1.1B</span>
-            <span class="tag">4 heads</span>
-            <span class="tag">CUDA + Triton</span>
-          </div>
+  <div class="topbar">
+    <nav class="nav" aria-label="Document navigation">
+      <div class="brand"><span class="mark"></span>Medusa Acceleration Extensions</div>
+      <div class="navlinks">
+        <a href="#motivation">Motivation</a>
+        <a href="#sota">SOTA</a>
+        <a href="#gap">Gap</a>
+        <a href="#methodology">Methodology</a>
+        <a href="#results">Results</a>
+        <a href="#throughput-drop">Throughput</a>
+        <a href="#custom-tree">Trees</a>
+        <a href="#tree-pruning">Pruning</a>
+        <a href="#multi-minnions">Minnions</a>
+        <a href="#references">References</a>
+      </div>
+    </nav>
+  </div>
+
+  <main class="page">
+    <section id="motivation" class="hero">
+      <div>
+        <p class="kicker">Motivation</p>
+        <h2><b>Turbo Medusa's Minions:</b> Task-Aware Heads and Turbo-Quantized KV Caches</h2>
+        <p class="lead">
+          Medusa reduces autoregressive latency with lightweight speculative heads, but long prompts expose three remaining bottlenecks: KV-cache memory growth, expensive full-tree verification, and generic heads that are not equally strong across coding, chat, reasoning, and summarization.
+        </p>
+        <br/>
+        <br/>
+         <br/>
+        <br/>
+         <br/>
+        <br/>
+        <p class= "lead">
+          Muhammad Shaffan Ahmad &nbsp;(23i-0673)
+          <br/>
+          Hamza Tariq &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; (23i-0510)
+        </p>
+
+      </div>
+      <div class="grid">
+        <div class="stat">
+          <small>Local capacity result</small>
+          <strong>32k fits</strong>
+          <span>TurboQuant b4 completes where base Medusa OOMs on the 6 GB RTX 3060 laptop.</span>
         </div>
-        <div class="hero-grid">
-          <div class="hero-copy">
-            <p class="lead">A clearer project journey: why the 64-node Medusa base gave the strongest speedup, what we implemented in Triton/Turbo/QJL, and why TurboQuant plus Llama 3.2 head training did not land.</p>
-            <div class="tag-row">
-              <span class="tag">Tree decoding</span>
-              <span class="tag">KV cache</span>
-              <span class="tag">QJL</span>
-              <span class="tag">Head training</span>
-            </div>
-          </div>
-          <div class="speed-card">
-            <div class="speed-number">64</div>
-            <p>node Medusa base was the headline result, compared with the 24-node optimized tree path.</p>
-          </div>
+        <div class="stat">
+          <small>KV memory reduction</small>
+          <strong>3.66x</strong>
+          <span>Estimated TurboQuant b4 KV compression in the context sweep.</span>
+        </div>
+        <div class="stat">
+          <small>Tree search finding</small>
+          <strong>not 64</strong>
+          <span>Full/default trees were not the universal throughput optimum across Vicuna, TinyLlama, and Llama-3.2.</span>
         </div>
       </div>
     </section>
 
-    <section class="slide" data-title="Headline">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">headline result</p>
-            <h2>Maximum speedup came from the 64-node Medusa base path.</h2>
-          </div>
-          <p class="lead">The 24-node optimized tree reduced verifier work, but it could lose too much speculative depth.</p>
+    <section id="sota">
+      <h2>SOTA Summary Table</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Work</th>
+            <th>Core idea</th>
+            <th>Relevance</th>
+            <th>Remaining gap</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Speculative Decoding / Sampling</td>
+            <td>Cheap draft model proposes tokens; target verifies several at once.</td>
+            <td>Defines the draft-and-verify latency pattern.</td>
+            <td>Needs a strong draft model and extra model management.</td>
+          </tr>
+          <tr>
+            <td>SpecInfer</td>
+            <td>Speculative token trees verified in parallel.</td>
+            <td>Systems-level ancestor of tree verification.</td>
+            <td>Tree shape must match hardware and acceptance behavior.</td>
+          </tr>
+          <tr>
+            <td>Medusa</td>
+            <td>Attach multiple lightweight decoding heads to the target model.</td>
+            <td>Base implementation used in this project.</td>
+            <td>Fixed tree sizes and generic heads are not always optimal.</td>
+          </tr>
+          <tr>
+            <td>Hydra / EAGLE</td>
+            <td>Improve speculative quality via dependent heads or feature-level drafting.</td>
+            <td>Shows draft quality matters as much as verification mechanics.</td>
+            <td>Training and deployment complexity rise.</td>
+          </tr>
+          <tr>
+            <td>PagedAttention / vLLM</td>
+            <td>Block-based KV memory management for serving.</td>
+            <td>Reduces fragmentation and serving waste.</td>
+            <td>Does not compress the KV vectors numerically.</td>
+          </tr>
+          <tr>
+            <td>KVQuant / KIVI</td>
+            <td>Sub-4-bit KV-cache quantization using per-channel, pre-RoPE, outlier-aware, or asymmetric 2-bit layouts.</td>
+            <td>Sets strong SOTA baselines for long-context KV compression.</td>
+            <td>Accuracy and speed depend on metadata layout, calibration, and custom kernels.</td>
+          </tr>
+          <tr>
+            <td>PolarQuant / QJL / TurboQuant</td>
+            <td>PolarQuant removes scale overhead with polar transforms; QJL adds 1-bit unbiased residual correction; TurboQuant combines near-optimal quantization with QJL.</td>
+            <td>Most direct SOTA context for the TurboQuant-Medusa implementation.</td>
+            <td>Reported speedups require fused compressed-attention kernels; our path still decodes temporary dense K/V.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="gap">
+      <h2>Gap and Problem Statement</h2>
+      <div class="grid two">
+        <div>
+          <h3>Gap</h3>
+          <ul>
+            <li>Base Medusa helps decoding, but KV memory still scales linearly with context.</li>
+            <li>A full 63/64-node verification tree can waste work when draft acceptance is not high enough.</li>
+            <li>One generic speculative head pack underuses domain regularity, especially for coding and structured outputs.</li>
+          </ul>
         </div>
-        <div class="two-col wide-left">
-          <div class="panel">
-            <p class="chart-title">Candidate tree budget</p>
-            <svg viewBox="0 0 680 330" role="img" aria-label="64 node Medusa base compared with 24 node optimized tree">
-              <line x1="135" y1="260" x2="620" y2="260" stroke="#d7e0ec" stroke-width="2"/>
-              <text x="135" y="292" class="axis-label">0</text>
-              <text x="375" y="292" class="axis-label">32</text>
-              <text x="600" y="292" class="axis-label">64</text>
-              <text x="24" y="98" class="chart-label">Medusa base</text>
-              <rect x="220" y="68" width="400" height="46" rx="23" fill="#dbe4ef"/>
-              <rect x="220" y="68" width="400" height="46" rx="23" fill="url(#baseGrad)"/>
-              <text x="638" y="99" class="chart-label">64</text>
-              <text x="24" y="190" class="chart-label">Optimized tree</text>
-              <rect x="220" y="160" width="400" height="46" rx="23" fill="#dbe4ef"/>
-              <rect x="220" y="160" width="150" height="46" rx="23" fill="url(#optGrad)"/>
-              <text x="638" y="191" class="chart-label">24</text>
-              <defs>
-                <linearGradient id="baseGrad" x1="0" x2="1">
-                  <stop offset="0%" stop-color="#008f8c"/>
-                  <stop offset="100%" stop-color="#148b5f"/>
-                </linearGradient>
-                <linearGradient id="optGrad" x1="0" x2="1">
-                  <stop offset="0%" stop-color="#ef6f4e"/>
-                  <stop offset="100%" stop-color="#c98610"/>
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-          <div class="panel">
-            <ul class="bullets">
-              <li>Speed was driven by accepted tokens per decode step.</li>
-              <li>Smaller trees help only when acceptance stays high.</li>
-              <li>Fallback verification erased many pruning gains.</li>
-            </ul>
-          </div>
+        <div class="note" style="font-size: medium;">
+          Problem statement: improve Medusa's throughput and practical long-context usability on commodity GPUs by compressing KV cache, calibrating speculative tree size, and training specialized head packs without modifying the base LLM.
         </div>
       </div>
     </section>
 
-    <section class="slide" data-title="Journey">
-      <div class="canvas">
-        <div class="header">
+    <section id="methodology">
+      <h2>Proposed Methodology</h2>
+      <div class="grid">
+        <div class="method">
+          <div class="tag">Track 1</div>
           <div>
-            <p class="kicker">project journey</p>
-            <h2>From simple Medusa speedup to systems-level bottlenecks.</h2>
+            <h3>TurboQuant KV compression</h3>
+            <p>Store K/V in a quantized representation using rotation, scalar quantization, per-token scale, and QJL residual metadata. Benchmark base Medusa vs TurboQuant across 1k to 32k context prompts.</p>
           </div>
         </div>
-        <div class="timeline">
-          <div class="step">
-            <div class="step-num">1</div>
-            <h3>Baseline</h3>
-            <p>Measured standard autoregressive TinyLlama generation.</p>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <h3>Medusa</h3>
-            <p>Added tree decoding with four speculative heads.</p>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <h3>Triton</h3>
-            <p>Fused expensive selection and verifier routines.</p>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <h3>Turbo</h3>
-            <p>Tried smaller and adaptive trees with fallback.</p>
-          </div>
-          <div class="step">
-            <div class="step-num">5</div>
-            <h3>QJL + VQ</h3>
-            <p>Compressed and sketched cache state for pruning.</p>
-          </div>
-          <div class="step">
-            <div class="step-num">6</div>
-            <h3>Training</h3>
-            <p>Self-distilled heads and tested Llama 3.2 transfer.</p>
-          </div>
-        </div>
-        <div class="panel">
-          <p>The final story is not just "make the tree smaller". The real objective is: keep acceptance deep, keep verification exact, and keep KV cache movement cheap.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="slide" data-title="Medusa">
-      <div class="canvas">
-        <div class="header">
+        <div class="method">
+          <div class="tag">Track 2</div>
           <div>
-            <p class="kicker">core idea</p>
-            <h2>Medusa predicts several future tokens, then the base model verifies them.</h2>
+            <h3>Custom speculative trees</h3>
+            <p>Sweep tree sizes and select the smallest tree that keeps acceptance and prefix match acceptable. Treat 63/64 nodes as a fallback, not a universal default.</p>
           </div>
         </div>
-        <div class="two-col wide-right">
-          <div class="panel">
-            <div class="flow">
-              <div class="flow-box">
-                <strong>1. Heads</strong>
-                <span>Extra heads propose future token options.</span>
-              </div>
-              <div class="flow-box">
-                <strong>2. Tree</strong>
-                <span>Options become a tree-attention batch.</span>
-              </div>
-              <div class="flow-box">
-                <strong>3. Verify</strong>
-                <span>The original model checks candidate prefixes.</span>
-              </div>
-              <div class="flow-box">
-                <strong>4. Accept</strong>
-                <span>The longest matching prefix is appended.</span>
-              </div>
-            </div>
-            <p class="small-note">The base model remains the source of truth. Medusa wins only when it lets one verifier step accept multiple tokens.</p>
-          </div>
-          <div class="visual tall panel">
-            <img src="assets/medusa_pipeline.jpg" alt="Medusa pipeline diagram">
+        <div class="method">
+          <div class="tag">Track 3</div>
+          <div>
+            <h3>Multi Minnions</h3>
+            <p>Train small Medusa head packs, each for a niche such as coding, chat, law, or creative writing. Route prompts to the best head pack while keeping the base model fixed.</p>
           </div>
         </div>
       </div>
+
     </section>
 
-    <section class="slide" data-title="Benchmark">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">benchmark design</p>
-            <h2>We measured speed, quality, and cache cost together.</h2>
-          </div>
-        </div>
-        <div class="two-col">
-          <div class="panel">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Path</th>
-                  <th>What it checked</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Baseline</strong></td>
-                  <td>Plain Hugging Face autoregressive generation.</td>
-                </tr>
-                <tr>
-                  <td><strong>Medusa base</strong></td>
-                  <td>Tree decoding with the full candidate set.</td>
-                </tr>
-                <tr>
-                  <td><strong>Turbo modes</strong></td>
-                  <td>24-node, adaptive, fused, QJL, packed KV-QJL, and VQ variants.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="panel">
-            <p class="chart-title">Metrics that mattered</p>
-            <div class="four-col">
-              <div class="metric">
-                <div class="metric-label">Speed</div>
-                <div class="metric-value">TPS</div>
-                <p>tokens per second</p>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Depth</div>
-                <div class="metric-value">A/S</div>
-                <p>accepted tokens per step</p>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Cost</div>
-                <div class="metric-value">N/S</div>
-                <p>verified nodes per step</p>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Quality</div>
-                <div class="metric-value">PM</div>
-                <p>prefix match</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="small-note">Relevant files: <span class="code">bench_base.py</span>, <span class="code">bench_medusa.py</span>, <span class="code">run_batch_benchmark.py</span>, <span class="code">bench_comm_turbo.py</span>.</p>
-      </div>
-    </section>
+    <section id="tree-pruning">
+      <h2>Why We Reduced the Tree From 64 Nodes to 24</h2>
+      <div class="tree-example-grid">
+        <div class="tree-diagram" aria-label="Speculative tree pruning example">
+          <svg viewBox="0 0 900 430" role="img">
+            <text x="30" y="30" class="tree-caption">Example Medusa verification tree: useful high-probability branches vs low-value tail nodes</text>
 
-    <section class="slide" data-title="Results">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">results</p>
-            <h2>The Medusa path confirmed the speedup mechanism.</h2>
-          </div>
-          <p class="lead">Existing project assets summarize the expected Medusa speedup behavior across model sizes and categories.</p>
-        </div>
-        <div class="two-col">
-          <div class="visual panel">
-            <img src="assets/medusa_speedup_cmp.jpg" alt="Medusa speedup comparison graph">
-          </div>
-          <div class="visual panel">
-            <img src="assets/category_speedup.png" alt="Category speedup graph">
-          </div>
-        </div>
-      </div>
-    </section>
+            <path class="tree-link" d="M450 75 C360 105 305 125 250 160"></path>
+            <path class="tree-link" d="M450 75 C430 108 405 125 380 160"></path>
+            <path class="tree-link weak" d="M450 75 C500 108 555 125 615 160"></path>
+            <path class="tree-link weak" d="M450 75 C555 105 630 130 735 160"></path>
 
-    <section class="slide" data-title="Implementation">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">implementation map</p>
-            <h2>The codebase split into model control, decode utilities, and cache kernels.</h2>
-          </div>
-        </div>
-        <div class="three-col">
-          <div class="panel">
-            <h3>Model path</h3>
-            <p><span class="code">medusa_model.py</span></p>
-            <ul class="bullets">
-              <li>Loads Medusa heads.</li>
-              <li>Runs the generation loop.</li>
-              <li>Collects Turbo stats.</li>
-            </ul>
-          </div>
-          <div class="panel">
-            <h3>Decode path</h3>
-            <p><span class="code">utils.py</span></p>
-            <ul class="bullets">
-              <li>Builds tree buffers.</li>
-              <li>Evaluates acceptance.</li>
-              <li>Plans pruning.</li>
-            </ul>
-          </div>
-          <div class="panel">
-            <h3>Cache path</h3>
-            <p><span class="code">kv_cache.py</span> + <span class="code">triton_kernels.py</span></p>
-            <ul class="bullets">
-              <li>Maintains KV state.</li>
-              <li>Compresses VQ cache.</li>
-              <li>Accelerates QJL scoring.</li>
-            </ul>
-          </div>
-        </div>
-        <div class="panel">
-          <svg viewBox="0 0 1060 120" role="img" aria-label="Implementation flow">
-            <rect x="20" y="28" width="225" height="64" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
-            <rect x="295" y="28" width="225" height="64" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
-            <rect x="570" y="28" width="225" height="64" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
-            <rect x="845" y="28" width="195" height="64" rx="8" fill="#ffece7" stroke="#f3b29d"/>
-            <text x="132" y="67" text-anchor="middle" class="chart-label">Medusa heads</text>
-            <text x="407" y="67" text-anchor="middle" class="chart-label">Tree decode</text>
-            <text x="682" y="67" text-anchor="middle" class="chart-label">KV cache</text>
-            <text x="942" y="67" text-anchor="middle" class="chart-label">Triton kernels</text>
-            <path d="M250 60 L290 60" stroke="#526072" stroke-width="3"/>
-            <path d="M525 60 L565 60" stroke="#526072" stroke-width="3"/>
-            <path d="M800 60 L840 60" stroke="#526072" stroke-width="3"/>
+            <path class="tree-link" d="M250 185 C210 220 180 245 135 280"></path>
+            <path class="tree-link" d="M250 185 C255 220 250 245 245 280"></path>
+            <path class="tree-link" d="M380 185 C350 220 335 245 320 280"></path>
+            <path class="tree-link weak" d="M380 185 C430 220 455 245 485 300"></path>
+
+            <path class="tree-link weak" d="M615 185 C570 220 555 245 535 300"></path>
+            <path class="tree-link weak" d="M615 185 C630 220 650 245 650 300"></path>
+            <path class="tree-link weak" d="M735 185 C720 220 710 245 695 300"></path>
+            <path class="tree-link weak" d="M735 185 C775 220 805 245 855 340"></path>
+
+            <circle class="tree-node good" cx="450" cy="75" r="28"></circle>
+            <text class="tree-label" x="450" y="75">boy</text>
+
+            <circle class="tree-node good" cx="250" cy="170" r="24"></circle>
+            <text class="tree-label" x="250" y="170">ate</text>
+            <circle class="tree-node mid" cx="380" cy="170" r="24"></circle>
+            <text class="tree-label" x="380" y="170">slept</text>
+            <circle class="tree-node bad" cx="615" cy="170" r="24"></circle>
+            <text class="tree-label" x="615" y="170">chased</text>
+            <circle class="tree-node bad" cx="735" cy="170" r="24"></circle>
+            <text class="tree-label" x="735" y="170">stalked</text>
+
+            <circle class="tree-node good" cx="135" cy="295" r="20"></circle>
+            <text class="tree-label" x="135" y="295">pizza</text>
+            <circle class="tree-node mid" cx="245" cy="295" r="20"></circle>
+            <text class="tree-label" x="245" y="295">ok</text>
+            <circle class="tree-node mid" cx="325" cy="295" r="20"></circle>
+            <text class="tree-label" x="325" y="295">?</text>
+            <circle class="tree-node bad" cx="485" cy="325" r="20"></circle>
+            <text class="tree-label" x="485" y="325">low</text>
+            <circle class="tree-node bad" cx="535" cy="325" r="20"></circle>
+            <text class="tree-label" x="535" y="325">low</text>
+            <circle class="tree-node bad" cx="650" cy="325" r="20"></circle>
+            <text class="tree-label" x="650" y="325">low</text>
+            <circle class="tree-node bad" cx="700" cy="325" r="20"></circle>
+            <text class="tree-label" x="700" y="325">low</text>
+            <circle class="tree-node bad" cx="845" cy="325" r="20"></circle>
+            <text class="tree-label" x="845" y="325">low</text>
+
+            <rect x="60" y="350" width="330" height="42" rx="8" fill="#eaf8f2" stroke="#148b5f"></rect>
+            <text x="76" y="376" class="tree-caption">24-node tree keeps the high-acceptance front of the tree.</text>
+
+            <rect x="485" y="350" width="350" height="42" rx="8" fill="#fff0ed" stroke="#dc2626"></rect>
+            <text x="501" y="376" class="tree-caption">64-node tree spends verification on weak tail predictions.</text>
           </svg>
         </div>
-      </div>
-    </section>
-
-    <section class="slide" data-title="Triton">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">triton implementation</p>
-            <h2>Triton removed avoidable verifier and planning overhead.</h2>
+        <div>
+          <div class="tree-callout">
+            <b>What goes wrong with 64 nodes</b>
+            <span>Lower Medusa heads and deeper branches often predict tokens with much lower acceptance probability. They still consume verification work even when they do not extend the accepted prefix.</span>
           </div>
-        </div>
-        <div class="two-col wide-left">
-          <div class="panel">
-            <svg viewBox="0 0 680 360" role="img" aria-label="Triton optimization flow">
-              <rect x="35" y="48" width="250" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
-              <text x="160" y="90" text-anchor="middle" class="chart-label">tree hidden states</text>
-              <rect x="395" y="48" width="250" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
-              <text x="520" y="90" text-anchor="middle" class="chart-label">lm_head_argmax</text>
-              <rect x="35" y="228" width="250" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
-              <text x="160" y="270" text-anchor="middle" class="chart-label">QJL selector</text>
-              <rect x="395" y="228" width="250" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
-              <text x="520" y="270" text-anchor="middle" class="chart-label">exact acceptance</text>
-              <path d="M292 83 L388 83" stroke="#526072" stroke-width="3"/>
-              <path d="M520 124 L520 222" stroke="#526072" stroke-width="3"/>
-              <path d="M292 263 L388 263" stroke="#526072" stroke-width="3"/>
-              <path d="M160 124 L160 222" stroke="#526072" stroke-width="3"/>
-            </svg>
+          <div class="tree-callout">
+            <b>Why 24 nodes helped</b>
+            <span>The 24-node tree keeps most useful early candidates, removes many low-value tail branches, and reduces verified nodes per step from about 64 to about 25.</span>
           </div>
-          <div class="panel">
-            <ul class="bullets">
-              <li>Greedy verification only needs argmax, not full logits.</li>
-              <li>QJL scoring uses packed XNOR-popcount kernels.</li>
-              <li>Pruned layouts are cached so masks are not rebuilt every step.</li>
-              <li>Triton improved the fast path, but acceptance quality still dominated.</li>
-            </ul>
+          <div class="tree-callout">
+            <b>Observed result</b>
+            <span>TinyLlama improved from 121.79 TPS to 151.17 TPS, and Llama-3.2 improved from 53.13 TPS to 59.60 TPS in the final 64-vs-24 sweep.</span>
+          </div>
+          <div class="note ok" style="margin-top: 12px;">
+            The goal is not always the largest tree. The goal is the largest accepted prefix per unit of verification work.
           </div>
         </div>
       </div>
     </section>
 
-    <section class="slide" data-title="Turbo">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">turbo optimization</p>
-            <h2>Turbo tried to prune the tree only when the verifier could still accept deeply.</h2>
-          </div>
-        </div>
-        <div class="decision">
-          <div class="decision-box">
-            <div class="label">confident branch</div>
-            <h3>Use compact tree</h3>
-            <p>24-node or pruned path reduces verifier nodes.</p>
-          </div>
-          <div class="decision-box">
-            <div class="label">uncertain branch</div>
-            <h3>Use full tree</h3>
-            <p>Full verification protects acceptance and prefix match.</p>
-          </div>
-          <div class="decision-box">
-            <div class="label">bad prune</div>
-            <h3>Fallback</h3>
-            <p>Rewind cache length and verify the full tree again.</p>
-          </div>
-        </div>
-        <div class="panel">
-          <svg viewBox="0 0 1080 170" role="img" aria-label="Turbo decision graph">
-            <rect x="20" y="55" width="210" height="58" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
-            <text x="125" y="91" text-anchor="middle" class="chart-label">Medusa prior</text>
-            <path d="M238 84 L330 84" stroke="#526072" stroke-width="3"/>
-            <rect x="340" y="35" width="240" height="98" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
-            <text x="460" y="74" text-anchor="middle" class="chart-label">confidence gate</text>
-            <text x="460" y="102" text-anchor="middle" class="axis-label">margin + node gain</text>
-            <path d="M590 70 L700 45" stroke="#148b5f" stroke-width="4"/>
-            <path d="M590 98 L700 128" stroke="#ef6f4e" stroke-width="4"/>
-            <rect x="710" y="15" width="300" height="58" rx="8" fill="#e8f7ef" stroke="#9bd8bd"/>
-            <text x="860" y="51" text-anchor="middle" class="chart-label">pruned verifier</text>
-            <rect x="710" y="100" width="300" height="58" rx="8" fill="#ffece7" stroke="#f3b29d"/>
-            <text x="860" y="136" text-anchor="middle" class="chart-label">full verifier</text>
-          </svg>
-        </div>
+
+    <section id="custom-tree">
+      <h2>Results: Custom Tree Size</h2>
+      <div style="display: flex;">
+        <figure>
+        <img src="llma3.2.jpeg" alt="Custom tree summary chart">
+        <figcaption>Full/default trees are not the universal throughput optimum. Tree size should be calibrated per model and workload.</figcaption>
+      </figure>
+      <figure>
+        <img src="tiny.jpeg" alt="Custom tree summary chart">
+        <figcaption>Full/default trees are not the universal throughput optimum. Tree size should be calibrated per model and workload.</figcaption>
+      </figure>
+      </div>
+      <table style="margin-top: 18px;">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>64-node/full max</th>
+            <th>24-node/custom max</th>
+            <th>Interpretation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>TinyLlama final sweep</td>
+            <td>121.79 TPS</td>
+            <td><b>151.17 TPS</b></td>
+            <td>24-node custom tree reached the highest observed TPS, about 1.24x over full-tree max.</td>
+          </tr>
+          <tr>
+            <td>Llama-3.2 final sweep</td>
+            <td>53.13 TPS</td>
+            <td><b>59.60 TPS</b></td>
+            <td>24-node custom tree reached the highest observed TPS, about 1.12x over full-tree max.</td>
+          </tr>
+          <tr>
+            <td>Quick calibration sweep</td>
+            <td>108.40 TPS</td>
+            <td><b>129.04 TPS</b></td>
+            <td>24-node setting also won in the calibration run, about 1.19x over full-tree max.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+     <section>
+      <img src = "intro.png"  alt="Throughput vs context chart">
+    </section>
+
+    <section id="results">
+      <h2>Results: TurboQuant on Long Context</h2>
+      <div class="image-row">
+        <figure>
+          <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/throughput_vs_context.png" alt="Throughput vs context chart">
+          <figcaption>TurboQuant b4 is slower in the current reference path, but the gap narrows as context grows.</figcaption>
+        </figure>
+        <figure>
+          <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/memory_vs_context.png" alt="Memory vs context chart">
+          <figcaption>KV memory savings become visible at longer contexts and track the expected compressed-cache reduction.</figcaption>
+        </figure>
+      </div>
+      <table style="margin-top: 4px;">
+        <thead>
+          <tr>
+            <th>Context</th>
+            <th class="num">Base TPS</th>
+            <th class="num">Turbo b4 TPS</th>
+            <th class="num">Base Peak</th>
+            <th class="num">Turbo Peak</th>
+            <th class="num">Base KV Cache</th>
+            <th class="num">Turbo KV Cache</th>
+            <th>Finding</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>16k</td><td class="num">8.10</td><td class="num">4.49</td><td class="num">4466.8 MB</td><td class="num"><b>4093.0 MB</b></td><td class="num">504.3 MB</td><td class="num"><b>137.9 MB</b></td><td>Turbo saves about 374 MB peak allocation.</td></tr>
+          <tr><td>32k</td><td class="num">OOM</td><td class="num">2.20</td><td class="num">OOM</td><td class="num"><b>5227.5 MB</b></td><td class="num">1005.0 MB</td><td class="num"><b>274.8 MB</b></td><td>TurboQuant completes where base Medusa OOMs.</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn" style="margin-top: 8px;">
+        Why no speedup yet: the current implementation stores KV compressed, but the attention path still decodes dense temporary K/V before verification. Fused compressed attention is the next step for throughput.
+      </div>
+      <div class="note ok" style="margin-top: 6px;">
+        Larger-context testing remains promising for speedup because KV-cache memory and bandwidth scale roughly linearly with context length. As prompts grow, TurboQuant's per-token KV savings also grow linearly; with fused compressed attention or chunked prefill, the compressed path is more likely to convert the capacity win into throughput speedup.
       </div>
     </section>
 
-    <section class="slide" data-title="QJL">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">QJL</p>
-            <h2>QJL gave a cheap ranking signal, not a replacement for exact verification.</h2>
-          </div>
+    <style>
+  /* Keeps the chart slides readable after the slide-fit script scales the page. */
+  .image-row figure img {
+    width: 100%;
+    max-width: none;
+    max-height: min(50vh, 410px);
+    height: auto;
+    display: block;
+  }
+
+  .image-row figure figcaption {
+    margin-top: 6px;
+  }
+</style>
+
+<section id="throughput-drop">
+  <h2>Results: Throughput and KV Cache With Context</h2>
+
+  <div class="image-row">
+    <figure>
+      <img src="artifacts/benchmarks/medusa/local_turbo_context_findings/speed_ratio_vs_context.png" alt="TurboQuant throughput ratio vs context chart">
+      <figcaption>The Turbo/Base throughput ratio improves from <b>0.417x at 1k to 0.554x at 16k</b>, showing that fixed quantization overhead is amortized better as context grows.</figcaption>
+    </figure>
+
+    <div class="note" style="font-size: x-large;">
+      <b>KV cache size with context:</b> base KV cache grows from 34.2 MB at 1k to about 1005.0 MB at 32k, while TurboQuant b4 grows from 9.3 MB to 274.8 MB. This is the main reason TurboQuant reaches 32k where base Medusa OOMs.
+    </div>
+  </div>
+
+  <h3 style="margin-top: 18px;">KV Cache Size Detail</h3>
+  <table style="margin-top: 10px;">
+    <thead>
+      <tr>
+        <th>Context</th>
+        <th class="num">Base TPS</th>
+        <th class="num">Turbo b4 TPS</th>
+        <th class="num">Base KV Cache</th>
+        <th class="num">Turbo KV Cache</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1k</td><td class="num">35.37</td><td class="num">14.75</td><td class="num">34.2 MB</td><td class="num">9.3 MB</td><td>Turbo cache is about 3.7x smaller.</td></tr>
+      <tr><td>2k</td><td class="num">33.88</td><td class="num">13.86</td><td class="num">64.8 MB</td><td class="num">17.7 MB</td><td>KV cache grows with context length in both paths.</td></tr>
+      <tr><td>4k</td><td class="num">24.98</td><td class="num">10.84</td><td class="num">127.6 MB</td><td class="num">34.9 MB</td><td>Turbo keeps the cache footprint much lower as attention cost rises.</td></tr>
+      <tr><td>8k</td><td class="num">14.99</td><td class="num">7.45</td><td class="num">253.1 MB</td><td class="num">69.2 MB</td><td>Turbo saves about 183.9 MB of KV cache here.</td></tr>
+      <tr><td>16k</td><td class="num">8.10</td><td class="num">4.49</td><td class="num">504.3 MB</td><td class="num">137.9 MB</td><td>Turbo saves about 366.4 MB of KV cache here.</td></tr>
+      <tr><td>32k</td><td class="num">OOM</td><td class="num">2.20</td><td class="num">1005.0 MB est.</td><td class="num">274.8 MB</td><td>Base OOMs during prefill; TurboQuant still completes with a much smaller cache.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+
+
+    <section id="multi-minnions">
+      <h2>Results: Multi Minnions</h2>
+      <div class="grid two">
+        <div>
+          <h3>What it is</h3>
+          <p>Multi Minnions keeps one base LLM and trains multiple cheap Medusa head packs, each specialized to a narrow domain. A router picks the head pack at inference time.</p>
         </div>
-        <div class="two-col wide-left">
-          <div class="panel">
-            <p class="chart-title">Packed 1-bit QJL sketch</p>
-            <svg viewBox="0 0 720 360" role="img" aria-label="QJL XNOR popcount diagram">
-              <rect x="40" y="55" width="170" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
-              <text x="125" y="97" text-anchor="middle" class="chart-label">query bits</text>
-              <rect x="40" y="230" width="170" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
-              <text x="125" y="272" text-anchor="middle" class="chart-label">key bits</text>
-              <rect x="285" y="142" width="170" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
-              <text x="370" y="184" text-anchor="middle" class="chart-label">XNOR</text>
-              <rect x="530" y="142" width="150" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
-              <text x="605" y="184" text-anchor="middle" class="chart-label">popcount</text>
-              <path d="M215 90 L278 160" stroke="#526072" stroke-width="3"/>
-              <path d="M215 265 L278 195" stroke="#526072" stroke-width="3"/>
-              <path d="M460 177 L522 177" stroke="#526072" stroke-width="3"/>
-              <text x="125" y="160" text-anchor="middle" class="axis-label">sign(Rq)</text>
-              <text x="125" y="335" text-anchor="middle" class="axis-label">sign(RK)</text>
-              <text x="606" y="240" text-anchor="middle" class="axis-label">approx score</text>
-            </svg>
-          </div>
-          <div class="panel">
-            <div class="three-col">
-              <div class="metric">
-                <div class="metric-label">Microbench</div>
-                <div class="metric-value">64</div>
-                <p>candidate nodes</p>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Sketch</div>
-                <div class="metric-value">128</div>
-                <p>packed dimensions</p>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Key sidecar</div>
-                <div class="metric-value">16x</div>
-                <p>smaller than FP16 keys at dim 128</p>
-              </div>
-            </div>
-            <ul class="bullets">
-              <li>Useful before verification.</li>
-              <li>Unsafe as the final decision.</li>
-              <li>Best when it preserves high-probability deep paths.</li>
-            </ul>
-          </div>
+        <div class="note ok">
+          Local evidence: code-specialized Llama-3.2 heads reached validation score 0.410 with head top-1 accuracies of 40.4%, 22.1%, 14.7%, and 10.7% on coding validation. Earlier mixed Llama-3.2 heads logged score 0.174 on their validation run.
         </div>
+      </div>
+      <div class="grid three" style="margin-top: 18px;">
+        <div class="stat"><small>Coding Minnion</small><strong>APIs</strong><span>Code syntax, errors, function calls.</span></div>
+        <div class="stat"><small>Chat Minnion</small><strong>dialogue</strong><span>Short conversational continuations.</span></div>
+        <div class="stat"><small>Reasoning Minnion</small><strong>steps</strong><span>Structured explanations and calculations.</span></div>
       </div>
     </section>
 
-    <section class="slide" data-title="TurboQuant">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">TurboQuant and KV cache</p>
-            <h2>KV compression saved memory in theory, but verification needed accurate cache state.</h2>
-          </div>
+    <section id="conclusion">
+      <h2>Conclusion</h2>
+      <div class="grid two">
+        <div>
+          <h3>Main findings</h3>
+          <ul>
+            <li>TurboQuant improves base Medusa's usable context capacity. It enabled 32k locally where base Medusa OOMed.</li>
+            <li>Current TurboQuant is not faster yet because dense temporary decode remains in the path.</li>
+            <li>Testing at larger context windows is still promising because KV-cache cost scales linearly with context, so TurboQuant's savings grow with sequence length and can translate into speedup once decode overhead is reduced.</li>
+            <li>Custom tree size matters. Full 63/64-node trees are not consistently optimal.</li>
+            <li>Multi Minnions is a promising training-side route for better acceptance and speedup.</li>
+          </ul>
         </div>
-        <div class="two-col">
-          <div class="panel">
-            <svg viewBox="0 0 640 350" role="img" aria-label="TurboQuant KV cache diagram">
-              <rect x="36" y="54" width="220" height="70" rx="8" fill="#e6f5f4" stroke="#9bd8d4"/>
-              <text x="146" y="96" text-anchor="middle" class="chart-label">FP16 KV</text>
-              <rect x="386" y="54" width="220" height="70" rx="8" fill="#fff3e0" stroke="#f2cf8a"/>
-              <text x="496" y="96" text-anchor="middle" class="chart-label">VQ cache</text>
-              <rect x="386" y="154" width="220" height="70" rx="8" fill="#edf2ff" stroke="#b8c7ff"/>
-              <text x="496" y="196" text-anchor="middle" class="chart-label">residual signs</text>
-              <rect x="386" y="254" width="220" height="70" rx="8" fill="#ffece7" stroke="#f3b29d"/>
-              <text x="496" y="296" text-anchor="middle" class="chart-label">hot FP16 window</text>
-              <path d="M262 89 L378 89" stroke="#526072" stroke-width="3"/>
-              <path d="M262 89 L378 189" stroke="#526072" stroke-width="3"/>
-              <path d="M262 89 L378 289" stroke="#526072" stroke-width="3"/>
-            </svg>
-          </div>
-          <div class="panel">
-            <ul class="bullets">
-              <li>Rotated scalar quantization stores compact keys and values.</li>
-              <li>Residual signs try to recover lost inner-product structure.</li>
-              <li>Hybrid mode keeps recent tokens exact in a hot window.</li>
-              <li>The verifier still often pays for dequantization, copies, and rewinds.</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="slide" data-title="Failure">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">why it failed</p>
-            <h2>The failure was caused by KV-cache overhead plus lower acceptance.</h2>
-          </div>
-        </div>
-        <div class="failure-chain">
-          <div class="chain-box">Approximate pruning drops deep candidates</div>
-          <div class="chain-box">Accepted tokens per step go down</div>
-          <div class="chain-box">More decode steps touch KV cache</div>
-          <div class="chain-box">Fallback and dequant erase gains</div>
-        </div>
-        <div class="two-col">
-          <div class="panel">
-            <h3>Root cause</h3>
-            <p>Medusa speedup depends on exact verifier acceptance. Once the cache path had to compress, sketch, copy, rewind, or dequantize, the overhead could be larger than the work saved by pruning.</p>
-          </div>
-          <div class="panel">
-            <h3>Practical lesson</h3>
-            <p>The 64-node base path stayed strong because it preserved candidate depth and avoided many recovery paths. The optimized path needed both lower node cost and equal acceptance.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="slide" data-title="Training">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">head training</p>
-            <h2>Head quality became the final bottleneck.</h2>
-          </div>
-        </div>
-        <div class="two-col wide-left">
-          <div class="panel">
-            <div class="donut-wrap">
-              <div class="donut" aria-hidden="true"></div>
-              <div class="legend">
-                <div class="legend-row"><span class="swatch"></span><span>UltraChat</span><strong>70%</strong></div>
-                <div class="legend-row"><span class="swatch"></span><span>SlimOrca</span><strong>15%</strong></div>
-                <div class="legend-row"><span class="swatch"></span><span>CodeAlpaca</span><strong>10%</strong></div>
-                <div class="legend-row"><span class="swatch"></span><span>GSM8K</span><strong>5%</strong></div>
-              </div>
-            </div>
-          </div>
-          <div class="panel">
-            <ul class="bullets">
-              <li>TinyLlama training froze the base model and trained only Medusa heads.</li>
-              <li>The target was self-distilled greedy future tokens from the base model.</li>
-              <li>Llama 3.2 did not train heads well enough for deep acceptance.</li>
-              <li>Weak heads increased decode steps, which amplified KV-cache overhead.</li>
-            </ul>
-          </div>
-        </div>
-        <p class="small-note">Relevant files: <span class="code">train_tinyllama_medusa_heads.py</span> and <span class="code">kaggle_mix_and_train_medusa.py</span>.</p>
-      </div>
-    </section>
-
-    <section class="slide" data-title="Next Technique">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">practical upgrade</p>
-            <h2>The next speed lever is better accepted depth, then calibrated cost control.</h2>
-          </div>
-        </div>
-        <div class="three-col">
-          <div class="panel">
-            <h3>Hydra scaffold</h3>
-            <p>Later draft heads can condition on earlier speculative token embeddings, targeting the weak-head bottleneck without changing verifier correctness.</p>
-          </div>
-          <div class="panel">
-            <h3>Calibrated tree</h3>
-            <p>A sweep records which choice budget gives the best exact-safe tokens per second on the current GPU and prompt mix.</p>
-          </div>
-          <div class="panel">
-            <h3>Exact boundary</h3>
-            <p>Every fast path still uses the base verifier for final acceptance; approximate signals only choose what to verify.</p>
-          </div>
-        </div>
-        <div class="panel">
-          <ul class="bullets">
-            <li><span class="code">draft_head_type="hydra"</span> is available as training/inference scaffolding.</li>
-            <li><span class="code">tree_policy="adaptive_calibrated"</span> falls back when calibration is missing or confidence is low.</li>
-            <li><span class="code">calibrate_tree_policy.py</span> writes the accepted-token and verified-node data used by the policy.</li>
+        <div>
+          <h3>Next engineering steps</h3>
+          <ul>
+            <li>Fuse compressed KV attention to remove dense decode overhead.</li>
+            <li>Add chunked prefill and 8-bit loading for 64k+ local experiments.</li>
+            <li>Promote tree calibration into a default benchmark stage.</li>
+            <li>Train and evaluate separate Minnion packs for coding, chat, and summarization.</li>
           </ul>
         </div>
       </div>
     </section>
 
-    <section class="slide" data-title="Final">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">final takeaways</p>
-            <h2>Medusa acceleration is a contract between heads, verifier, and KV cache.</h2>
-          </div>
-        </div>
-        <div class="three-col">
-          <div class="metric">
-            <div class="metric-label">Best result</div>
-            <div class="metric-value">64</div>
-            <p>node Medusa base gave the strongest project headline.</p>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Best engineering</div>
-            <div class="metric-value">Triton</div>
-            <p>kernels reduced verifier and planning overhead.</p>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Main blocker</div>
-            <div class="metric-value">KV</div>
-            <p>cache movement and reconstruction erased many quantization gains.</p>
-          </div>
-        </div>
-        <div class="panel">
-          <ul class="bullets">
-            <li>Optimize accepted tokens per step, not just node count.</li>
-            <li>Use approximate QJL only for pruning, never for final acceptance.</li>
-            <li>Hydra-style heads and calibrated tree policies are the practical next step after the current exact verifier path.</li>
-          </ul>
-        </div>
-      </div>
+    <section id="references">
+      <h2>References</h2>
+      <ol class="refs">
+        <li><a href="https://arxiv.org/abs/2211.17192">Fast Inference from Transformers via Speculative Decoding</a>, Leviathan et al., 2023.</li>
+        <li><a href="https://arxiv.org/abs/2302.01318">Accelerating Large Language Model Decoding with Speculative Sampling</a>, Chen et al., 2023.</li>
+        <li><a href="https://arxiv.org/abs/2305.09781">SpecInfer: Tree-based Speculative Inference and Verification</a>, Miao et al., 2023.</li>
+        <li><a href="https://arxiv.org/abs/2309.06180">Efficient Memory Management for LLM Serving with PagedAttention</a>, Kwon et al., 2023.</li>
+        <li><a href="https://arxiv.org/abs/2401.10774">Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads</a>, Cai et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2401.15077">EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty</a>, Li et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2402.05109">Hydra: Sequentially-Dependent Draft Heads for Medusa Decoding</a>, Ankner et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2401.18079">KVQuant: Towards 10 Million Context Length LLM Inference with KV Cache Quantization</a>, Hooper et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2402.02750">KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache</a>, Liu et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2406.03482">QJL: 1-Bit Quantized JL Transform for KV Cache Quantization with Zero Overhead</a>, Zandieh et al., 2024.</li>
+        <li><a href="https://arxiv.org/abs/2502.02617">PolarQuant: Quantizing KV Caches with Polar Transformation</a>, Han et al., 2025.</li>
+        <li><a href="https://arxiv.org/abs/2504.19874">TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate</a>, Zandieh et al., 2025.</li>
+      </ol>
     </section>
 
-    <section class="slide" data-title="Files">
-      <div class="canvas">
-        <div class="header">
-          <div>
-            <p class="kicker">file appendix</p>
-            <h2>Files to open during questions.</h2>
-          </div>
-        </div>
-        <div class="file-grid">
-          <a class="file-card" href="bench_base.py" target="_blank"><code>bench_base.py</code><p>Baseline generation.</p></a>
-          <a class="file-card" href="bench_medusa.py" target="_blank"><code>bench_medusa.py</code><p>Medusa benchmark.</p></a>
-          <a class="file-card" href="bench_comm_turbo.py" target="_blank"><code>bench_comm_turbo.py</code><p>Turbo and QJL sweeps.</p></a>
-          <a class="file-card" href="calibrate_tree_policy.py" target="_blank"><code>calibrate_tree_policy.py</code><p>Tree calibration.</p></a>
-          <a class="file-card" href="bench_qjl_popcount.py" target="_blank"><code>bench_qjl_popcount.py</code><p>QJL microbenchmark.</p></a>
-          <a class="file-card" href="medusa/model/medusa_model.py" target="_blank"><code>medusa/model/medusa_model.py</code><p>Generation loop.</p></a>
-          <a class="file-card" href="medusa/model/utils.py" target="_blank"><code>medusa/model/utils.py</code><p>Decode utilities.</p></a>
-          <a class="file-card" href="medusa/model/kv_cache.py" target="_blank"><code>medusa/model/kv_cache.py</code><p>KV cache modes.</p></a>
-          <a class="file-card" href="medusa/model/triton_kernels.py" target="_blank"><code>medusa/model/triton_kernels.py</code><p>Triton kernels.</p></a>
-          <a class="file-card" href="train_tinyllama_medusa_heads.py" target="_blank"><code>train_tinyllama_medusa_heads.py</code><p>Head trainer.</p></a>
-          <a class="file-card" href="kaggle_mix_and_train_medusa.py" target="_blank"><code>kaggle_mix_and_train_medusa.py</code><p>Training data mix.</p></a>
-          <a class="file-card" href="run_batch_benchmark.py" target="_blank"><code>run_batch_benchmark.py</code><p>10-prompt suite.</p></a>
-          <a class="file-card" href="TinyLlama-1.1B-Chat-v1.0-4heads/config.json" target="_blank"><code>TinyLlama.../config.json</code><p>Local head config.</p></a>
-        </div>
-      </div>
-    </section>
+    <footer>
+      Generated from local benchmark artifacts in <code>artifacts/benchmarks/medusa/local_turbo_context_findings</code>.
+    </footer>
   </main>
-
-  <div class="footer" aria-hidden="true">
-    <span class="brand">Medusa LLM acceleration</span>
-    <span class="count" id="count">01 / 16</span>
-    <span></span>
-    <div class="progress-track"><div class="progress" id="progress"></div></div>
-  </div>
-
-  <div class="controls" aria-label="Slide navigation">
-    <button class="nav prev" id="prev" type="button" title="Previous slide"><span class="sr-only">Previous slide</span></button>
-    <button class="nav next" id="next" type="button" title="Next slide"><span class="sr-only">Next slide</span></button>
-  </div>
-
+<!-- Added scale(0.8) to shrink everything to 80% of its original size -->
+<div class="slide-controls" aria-label="Slide controls" style="transform: scale(0.8); transform-origin: top left; display: inline-flex; align-items: center; gap: 5px;">
+    <button class="slide-btn" id="prevSlide" type="button">Prev</button>
+    <span class="slide-count" id="slideCount">01 / 11</span>
+    <button class="slide-btn" id="nextSlide" type="button">Next</button>
+</div>
   <script>
-    const slides = Array.from(document.querySelectorAll(".slide"));
-    const progress = document.getElementById("progress");
-    const count = document.getElementById("count");
-    const prev = document.getElementById("prev");
-    const next = document.getElementById("next");
-    let current = 0;
+    (() => {
+      const desktopQuery = window.matchMedia("(min-width: 901px)");
+      const prevButton = document.getElementById("prevSlide");
+      const nextButton = document.getElementById("nextSlide");
+      const slideCount = document.getElementById("slideCount");
 
-    function pad(n) {
-      return String(n).padStart(2, "0");
-    }
-
-    function show(index) {
-      current = Math.max(0, Math.min(slides.length - 1, index));
-      slides.forEach((slide, i) => slide.classList.toggle("active", i === current));
-      document.body.classList.toggle("dark-active", slides[current].classList.contains("dark"));
-      progress.style.width = (((current + 1) / slides.length) * 100) + "%";
-      count.textContent = pad(current + 1) + " / " + pad(slides.length);
-      document.title = "Medusa Presentation - " + (slides[current].dataset.title || ("Slide " + (current + 1)));
-    }
-
-    prev.addEventListener("click", () => show(current - 1));
-    next.addEventListener("click", () => show(current + 1));
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
-        event.preventDefault();
-        show(current + 1);
+      function getSlides() {
+        return Array.from(document.querySelectorAll("main.page > section"));
       }
-      if (event.key === "ArrowLeft" || event.key === "PageUp") {
-        event.preventDefault();
-        show(current - 1);
-      }
-      if (event.key === "Home") {
-        event.preventDefault();
-        show(0);
-      }
-      if (event.key === "End") {
-        event.preventDefault();
-        show(slides.length - 1);
-      }
-    });
 
-    let startX = null;
-    document.addEventListener("touchstart", (event) => {
-      startX = event.changedTouches[0].clientX;
-    }, { passive: true });
+      function wrapSlides() {
+        getSlides().forEach((section) => {
+          if (section.firstElementChild && section.firstElementChild.classList.contains("slide-fit")) {
+            return;
+          }
 
-    document.addEventListener("touchend", (event) => {
-      if (startX === null) return;
-      const delta = event.changedTouches[0].clientX - startX;
-      startX = null;
-      if (Math.abs(delta) < 48) return;
-      show(current + (delta < 0 ? 1 : -1));
-    }, { passive: true });
+          const inner = document.createElement("div");
+          inner.className = "slide-fit";
+          while (section.firstChild) {
+            inner.appendChild(section.firstChild);
+          }
+          section.appendChild(inner);
+        });
+      }
 
-    const requested = Number(new URLSearchParams(window.location.search).get("slide"));
-    show(Number.isFinite(requested) && requested > 0 ? requested - 1 : 0);
+      function fitsWithin(inner, availableWidth, availableHeight, scale) {
+        inner.style.width = (availableWidth / scale) + "px";
+        inner.style.transform = "scale(1)";
+        return inner.scrollHeight * scale <= availableHeight + 1 &&
+          inner.scrollWidth * scale <= availableWidth + 1;
+      }
+
+      function padNumber(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      function currentSlideIndex() {
+        const slides = getSlides();
+        if (!slides.length) {
+          return 0;
+        }
+
+        const topbar = document.querySelector(".topbar");
+        const topbarHeight = topbar ? topbar.getBoundingClientRect().height : 0;
+        const targetTop = topbarHeight + 10;
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        slides.forEach((slide, index) => {
+          const distance = Math.abs(slide.getBoundingClientRect().top - targetTop);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+          }
+        });
+
+        return bestIndex;
+      }
+
+      function updateControls(index = currentSlideIndex()) {
+        const slides = getSlides();
+        if (!slides.length || !prevButton || !nextButton || !slideCount) {
+          return;
+        }
+
+        prevButton.disabled = index <= 0;
+        nextButton.disabled = index >= slides.length - 1;
+        slideCount.textContent = padNumber(index + 1) + " / " + padNumber(slides.length);
+
+        document.querySelectorAll(".navlinks a").forEach((link) => {
+          const target = link.getAttribute("href");
+          if (target === "#" + slides[index].id) {
+            link.setAttribute("aria-current", "page");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        });
+      }
+
+      function scrollToSlide(index, behavior = "smooth") {
+        const slides = getSlides();
+        if (!slides.length) {
+          return;
+        }
+
+        const nextIndex = Math.max(0, Math.min(slides.length - 1, index));
+        const slide = slides[nextIndex];
+        const topbar = document.querySelector(".topbar");
+        const topbarHeight = topbar ? topbar.getBoundingClientRect().height : 0;
+        const top = Math.max(0, slide.getBoundingClientRect().top + window.scrollY - topbarHeight - 10);
+        if (behavior === "auto") {
+          window.scrollTo(0, top);
+          document.documentElement.scrollTop = top;
+          document.body.scrollTop = top;
+        } else {
+          window.scrollTo({ top, behavior });
+        }
+        if (slide.id) {
+          window.history.replaceState(null, "", "#" + slide.id);
+        }
+        updateControls(nextIndex);
+      }
+
+      function fitSlides() {
+        wrapSlides();
+
+        const topbar = document.querySelector(".topbar");
+        const topbarHeight = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
+        document.documentElement.style.setProperty("--topbar-h", topbarHeight + "px");
+
+        document.querySelectorAll("main.page > section").forEach((section) => {
+          const inner = section.querySelector(":scope > .slide-fit");
+          if (!inner) {
+            return;
+          }
+
+          if (!desktopQuery.matches) {
+            section.classList.remove("fit-active");
+            section.style.height = "";
+            delete section.dataset.scale;
+            inner.style.width = "";
+            inner.style.top = "";
+            inner.style.left = "";
+            inner.style.transform = "";
+            return;
+          }
+
+          section.classList.add("fit-active");
+          section.style.height = Math.max(560, window.innerHeight - topbarHeight - 18) + "px";
+
+          const style = window.getComputedStyle(section);
+          const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+          const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+          const padLeft = parseFloat(style.paddingLeft);
+          const padTop = parseFloat(style.paddingTop);
+          const availableWidth = Math.max(320, section.clientWidth - padX);
+          const availableHeight = Math.max(320, section.clientHeight - padY);
+          inner.style.width = availableWidth + "px";
+          inner.style.transform = "scale(1)";
+          const baseHeight = inner.scrollHeight;
+
+          let scale = 1;
+          if (!fitsWithin(inner, availableWidth, availableHeight, 1)) {
+            let low = 0.25;
+            let high = 1;
+            for (let i = 0; i < 12; i += 1) {
+              const mid = (low + high) / 2;
+              if (fitsWithin(inner, availableWidth, availableHeight, mid)) {
+                low = mid;
+              } else {
+                high = mid;
+              }
+            }
+            scale = low;
+          } else {
+            let low = 1;
+            let high = baseHeight < availableHeight * 0.62 ? 1.22 : 1.12;
+            if (fitsWithin(inner, availableWidth, availableHeight, high)) {
+              scale = high;
+            } else {
+              for (let i = 0; i < 10; i += 1) {
+                const mid = (low + high) / 2;
+                if (fitsWithin(inner, availableWidth, availableHeight, mid)) {
+                  low = mid;
+                } else {
+                  high = mid;
+                }
+              }
+              scale = low;
+            }
+          }
+
+          inner.style.width = (availableWidth / scale) + "px";
+          inner.style.transform = "scale(" + scale.toFixed(4) + ")";
+          inner.style.left = (padLeft + Math.max(0, (availableWidth - inner.scrollWidth * scale) / 2)) + "px";
+          inner.style.top = (padTop + Math.max(0, (availableHeight - inner.scrollHeight * scale) / 2)) + "px";
+          section.dataset.scale = scale.toFixed(3);
+        });
+
+        updateControls();
+      }
+
+      let frame = 0;
+      let initialHashHandled = false;
+      function scheduleFit() {
+        window.cancelAnimationFrame(frame);
+        frame = window.requestAnimationFrame(() => {
+          fitSlides();
+          if (!initialHashHandled && window.location.hash) {
+            initialHashHandled = true;
+            const target = document.querySelector(window.location.hash);
+            if (target) {
+              const index = getSlides().indexOf(target);
+              if (index >= 0) {
+                scrollToSlide(index, "auto");
+                window.setTimeout(() => scrollToSlide(index, "auto"), 60);
+                window.setTimeout(() => scrollToSlide(index, "auto"), 240);
+              }
+            }
+          }
+          updateControls();
+        });
+      }
+
+      function go(delta) {
+        scrollToSlide(currentSlideIndex() + delta);
+      }
+
+      prevButton && prevButton.addEventListener("click", () => go(-1));
+      nextButton && nextButton.addEventListener("click", () => go(1));
+
+      document.querySelectorAll(".navlinks a").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          const target = document.querySelector(link.getAttribute("href"));
+          const index = getSlides().indexOf(target);
+          if (index >= 0) {
+            event.preventDefault();
+            scrollToSlide(index);
+          }
+        });
+      });
+
+      document.addEventListener("keydown", (event) => {
+        const activeTag = document.activeElement ? document.activeElement.tagName : "";
+        if (["INPUT", "TEXTAREA", "SELECT"].includes(activeTag)) {
+          return;
+        }
+
+        if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+          event.preventDefault();
+          go(1);
+        } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+          event.preventDefault();
+          go(-1);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          scrollToSlide(0);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          scrollToSlide(getSlides().length - 1);
+        }
+      });
+
+      let scrollFrame = 0;
+      window.addEventListener("scroll", () => {
+        window.cancelAnimationFrame(scrollFrame);
+        scrollFrame = window.requestAnimationFrame(() => updateControls());
+      }, { passive: true });
+
+      window.addEventListener("load", scheduleFit);
+      window.addEventListener("resize", scheduleFit);
+      window.addEventListener("hashchange", scheduleFit);
+      desktopQuery.addEventListener("change", scheduleFit);
+      document.addEventListener("DOMContentLoaded", scheduleFit);
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(scheduleFit).catch(() => {});
+      }
+    })();
   </script>
 </body>
 </html>
